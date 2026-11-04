@@ -28,7 +28,9 @@ export function EmptyStage({ relink }: { relink?: boolean }) {
   const [reduced, setReduced] = useState(false);
   const [demo, setDemo] = useState<number | null>(null);
   const [over, setOver] = useState(false);
-  const { loading, sourceError, source } = useStore((s) => ({ loading: s.rt.loading, sourceError: s.rt.sourceError, source: s.project.source }));
+  const loading = useStore((s) => s.rt.loading);
+  const sourceError = useStore((s) => s.rt.sourceError);
+  const source = useStore((s) => s.project.source);
   const par = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
