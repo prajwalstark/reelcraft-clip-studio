@@ -1,23 +1,39 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { EmptyStage } from "@/components/reelforge/EmptyStage";
+import { hydrate, sourceMissing, useStore } from "@/lib/reelforge/store";
 
-// The home route ships no og:image, so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  ssr: false,
+  head: () => ({
+    meta: [
+      { title: "ReelForge — Long video to shorts editor" },
+      { name: "description", content: "Local-first editor that splits long videos into vertical shorts and Reels." },
+      { property: "og:title", content: "ReelForge — Long video to shorts editor" },
+      { property: "og:description", content: "Split, crop, caption and export shorts in your browser." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
+  useEffect(() => hydrate(), []);
+  const missing = useStore((s) => sourceMissing(s));
+  const clips = useStore((s) => s.project.clips);
+  const url = useStore((s) => s.rt.url);
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <main className="grain h-screen w-screen">
+      {!url ? (
+        <EmptyStage relink={missing} />
+      ) : (
+        <div className="flex h-full items-center justify-center stage-bg p-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            Source loaded · {clips.length} clips created by duration. The full editor panels are still being built.
+          </p>
+        </div>
+      )}
+    </main>
   );
 }
