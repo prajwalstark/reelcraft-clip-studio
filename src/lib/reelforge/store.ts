@@ -240,7 +240,7 @@ async function run() {
         });
       } catch (e) {
         const aborted = (e as Error).name === "AbortError";
-        patchJob(job.id, { status: aborted ? "canceled" : "error", error: aborted ? undefined : (e as Error).message });
+        patchJob(job.id, { status: aborted ? "canceled" : "error", ...(aborted ? {} : { error: (e as Error).message }) });
       } finally {
         controllers.delete(job.id);
       }

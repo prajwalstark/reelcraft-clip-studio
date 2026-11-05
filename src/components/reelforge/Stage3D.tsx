@@ -11,7 +11,7 @@ function frameTexture(i: number) {
   g.fillStyle = "#0d1016";
   g.fillRect(0, 0, 256, 420);
   const grad = g.createLinearGradient(0, 40, 256, 380);
-  const hue = i % 3 === 0 ? ["#c8ff3d", "#0e2a10"] : i % 3 === 1 ? ["#4fd6ff", "#0a1a2a"] : ["#7a8396", "#111520"];
+  const hue: [string, string] = i % 3 === 0 ? ["#c8ff3d", "#0e2a10"] : i % 3 === 1 ? ["#4fd6ff", "#0a1a2a"] : ["#7a8396", "#111520"];
   grad.addColorStop(0, hue[0]);
   grad.addColorStop(1, hue[1]);
   g.globalAlpha = 0.55;

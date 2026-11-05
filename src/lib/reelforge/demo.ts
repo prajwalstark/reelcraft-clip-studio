@@ -50,5 +50,5 @@ export async function generateDemoVideo(seconds: number, onProgress: (p: number)
   stream.getTracks().forEach((t) => t.stop());
   osc.stop();
   await ac.close();
-  return new File(chunks, `reelforge-demo.${fmt.ext}`, { type: fmt.mime.split(";")[0] });
+  return new File(chunks, `reelforge-demo.${fmt.ext}`, { type: fmt.mime.split(";")[0] ?? "video/webm" });
 }
