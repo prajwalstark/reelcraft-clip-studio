@@ -99,7 +99,7 @@ export function segmentByDuration(duration: number, seg: number): Array<[number,
   let s = 0;
   while (s < duration - 1e-6) {
     const e = Math.min(duration, s + len);
-    if (e - s < MIN_CLIP && out.length) out[out.length - 1][1] = r3(duration);
+    if (e - s < MIN_CLIP && out.length) out[out.length - 1]![1] = r3(duration);
     else out.push([r3(s), r3(e)]);
     s = e;
   }
@@ -164,9 +164,9 @@ export function parseSubtitles(text: string): Caption[] {
     const lines = b.split("\n").filter((l) => l.trim() !== "");
     const i = lines.findIndex((l) => l.includes("-->"));
     if (i < 0) continue;
-    const [a, rest] = lines[i].split("-->");
+    const [a = "", rest = ""] = lines[i]!.split("-->");
     const start = parseTime(a);
-    const end = parseTime(rest.trim().split(/\s+/)[0]);
+    const end = parseTime(rest.trim().split(/\s+/)[0] ?? "");
     const body = lines
       .slice(i + 1)
       .join("\n")

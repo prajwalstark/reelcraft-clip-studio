@@ -83,7 +83,7 @@ export function exportClip(opts: {
       video.pause();
       draw();
       rec.onstop = () => {
-        const blob = new Blob(chunks, { type: format.mime.split(";")[0] });
+        const blob = new Blob(chunks, { type: format.mime.split(";")[0] ?? "video/webm" });
         cleanup();
         if (!blob.size) reject(new Error("Recorder produced an empty file."));
         else resolve({ blob, format, width: w, height: h, duration: clip.end - clip.start });
