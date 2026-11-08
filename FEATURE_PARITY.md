@@ -16,6 +16,7 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 | Timeline | Horizontal zoom/scroll, trim handles, optional eight-pixel snapping to other clip boundaries and markers, named markers |
 | Keyboard | Space play/pause, I/O trim, M marker, Ctrl/Command+K split, arrows source time step, Shift+arrows one second, undo/redo |
 | Export | 720/1080 size presets, 24/30 fps targets, real-time browser recording, progress/cancel, ZIP with matching SRT |
+| Native templates | Five original single-clip styles, animated titles/subtitles, motion/tempo/accent controls, optional per-clip caption styling, selected-clip application and undo |
 | Projects | Existing v1 JSON compatibility, autosave/relink, project import/export, undo/redo for edits |
 | Export isolation | Each queued job captures its source File, clip settings, captions/style, quality and SRT; later edits cannot change it |
 | Small screens | Shorts/Preview/Tools panel navigation; eight inspector tabs |
@@ -43,3 +44,21 @@ Run `npm test`, `npx tsc --noEmit`, and `npm run build`. Regression tests cover 
 Before release, use a short source with visible motion and audio to check import → trim → speed → title/color/audio edits → download. Inspect the output duration, dimensions, frame progression, sound/fades, titles and subtitle timing. Test 720p/24 and 1080p/30, cancellation, and the small-screen layout.
 
 The development environment could not complete this browser smoke test: local Chromium was blocked from creating its process socket and shared Chrome could not connect to the local development server. Build/unit/component checks do not establish media-encoder or visual behavior in a real browser.
+
+## Editable template gallery
+
+Open **Templates** after loading a source. Choose a style, then **Apply to this clip** or **Apply to selected**. Browse cards without changing the project. Applying replaces the clip's color and title styling, preserves any existing nonempty enabled title text, and keeps source trim, framing, playback speed, audio and caption text. Undo restores the prior look. Templates use output seconds for animation and opening title defaults; title ranges remain stored in source seconds like other titles.
+
+| Original Reelcraft style | Inspiration from the provided CapCut shortlist | Native implementation |
+| --- | --- | --- |
+| Weekend Journal | [weekend story](https://www.capcut.com/template-detail/weekend-story/7547228528903720253) | Warm color, gentle push-in, border and progress line |
+| Rhythm Frames | [LF](https://www.capcut.com/template-detail/LF/7493918549925203253) | Smooth rhythmic zoom, framed composition, manual pulse tempo |
+| Momentum | [trending video](https://www.capcut.com/id-id/template-detail/trending-video/7606590613190053125) | Bold opening title, push-in and moving accent line |
+| Prism Reveal | [EPIC TRANSITION](https://www.capcut.com/template-detail/EPIC-TRANSITION/7628152739305917716) | Opening accent sweep, rising title and corner marks |
+| Slow Spotlight | [Trending template](https://www.capcut.com/template-detail/Trending-template/7687835534021971220) | Gentle zoom-out, vignette and minimal title |
+
+These designs are original, locally rendered interpretations of broad styles, not exact reconstructions or imported CapCut templates. No CapCut media, music, project files or proprietary transitions are bundled. The source shortlist was selected using publicly displayed template uses and likes, not Instagram views or a measured engagement rate. Popularity of the source templates is not attributed to these recreations.
+
+All template motion and text use the existing shared canvas compositor in preview/export. Customizations persist in v1 project JSON and queued export snapshots. Optional caption styling applies only to that clip and does not change caption text or SRT. Bypassing template motion/decorations retains the applied color/title edits. Pulse tempo is manual; this version does not detect audio beats, stitch multiple sources or add music. Slow Spotlight preserves playback speed; change it in Clip when desired.
+
+Gallery thumbnails are labeled style sketches. Actual footage is previewed after applying. A real-browser visual and video-encoding check is still required before release; the current execution environment blocked Chromium process sockets. Unit/component tests cover application/undo, batch independence, speed-aware timing, malformed imports, persistence, export snapshots, drawing and preview/export geometry.

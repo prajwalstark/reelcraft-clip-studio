@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Download, FilePlus2, FolderOpen, Pause, Play, Redo2, Save, Scissors, Trash2, Undo2, Upload, X,
-  Captions as CapIcon, Crop, Film, Clapperboard, Plus, Palette, Volume2, Type, Flag,
+  Captions as CapIcon, Crop, Film, Clapperboard, Plus, Palette, Volume2, Type, Flag, Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
 } from "@/lib/reelforge/store";
 import { audioGain, speedOf, outputDuration } from '@/lib/reelforge/editing';
 import { ColorPanel, AudioPanel, SpeedControl, TitlesPanel, MarkersPanel, QualityControls } from './ToolPanels';
+import { TemplatesPanel } from "./TemplatesPanel";
 import { Timeline } from './Timeline';
 import { pickVideo } from "./EmptyStage";
 
@@ -477,12 +478,12 @@ function Inspector() {
   const tab = useStore((s) => s.rt.tab);
   const clip = useStore((s) => activeClip(s));
   const tabs: Array<[Tab, string, React.ComponentType<{ className?: string }>]> = [
-    ["clip", "Clip", Scissors], ["frame", "Frame", Crop], ["color", "Color", Palette], ["audio", "Audio", Volume2],
+    ["templates", "Templates", Layers], ["clip", "Clip", Scissors], ["frame", "Frame", Crop], ["color", "Color", Palette], ["audio", "Audio", Volume2],
     ["titles", "Titles", Type], ["captions", "Captions", CapIcon], ["markers", "Markers", Flag], ["export", "Export", Download],
   ];
   return (
     <aside className="glass flex h-full w-full lg:w-80 shrink-0 flex-col border-y-0 border-r-0">
-      <div role="tablist" className="grid grid-cols-4 gap-1 border-b p-1.5">
+      <div role="tablist" className="grid grid-cols-3 gap-1 border-b p-1.5">
         {tabs.map(([id, label, Icon]) => (
           <button
             key={id}
@@ -498,7 +499,7 @@ function Inspector() {
       <div className="flex-1 overflow-y-auto p-3">
         {!clip ? (
           <div className="text-sm text-muted-foreground">No clip. Split the video to create shorts.</div>
-        ) : tab === "clip" ? <ClipTab clip={clip} /> : tab === "frame" ? <FrameTab clip={clip} /> : tab === "captions" ? <CaptionsTab clip={clip} /> : tab === "color" ? <ColorPanel clip={clip} /> : tab === "audio" ? <AudioPanel clip={clip} /> : tab === "titles" ? <TitlesPanel clip={clip} /> : tab === "markers" ? <MarkersPanel /> : <ExportTab clip={clip} />}
+        ) : tab === "templates" ? <TemplatesPanel key={clip.id} clip={clip} /> : tab === "clip" ? <ClipTab clip={clip} /> : tab === "frame" ? <FrameTab clip={clip} /> : tab === "captions" ? <CaptionsTab clip={clip} /> : tab === "color" ? <ColorPanel clip={clip} /> : tab === "audio" ? <AudioPanel clip={clip} /> : tab === "titles" ? <TitlesPanel clip={clip} /> : tab === "markers" ? <MarkersPanel /> : <ExportTab clip={clip} />}
       </div>
     </aside>
   );

@@ -1,3 +1,4 @@
+import { normalizeTemplate } from "./templates";
 import { ASPECTS, clipCaptions, toSRT, type Caption, type Clip, type Project } from "./core";
 
 export interface ColorSettings {
@@ -195,8 +196,11 @@ export function readProject(value: unknown): Project {
     )
       throw new Error("Invalid clip or duplicate clip ID");
     ids.add(c.id);
+    const { template: rawTemplate, ...rest } = c;
+    const template = normalizeTemplate(rawTemplate);
     return {
-      ...c,
+      ...rest,
+      ...(template ? { template } : {}),
       speed: speedOf(c),
       color: colorOf(c),
       audio: audioOf(c),
