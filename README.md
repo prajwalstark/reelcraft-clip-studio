@@ -1,5 +1,7 @@
 # Reelcraft Clip Studio
 
+**Editable templates:** Load a video and open **Templates** for five original styles inspired by the selected CapCut trends. Customize titles, subtitles, accent colors and motion; apply to one clip or a selection and undo changes. See [FEATURE_PARITY.md](FEATURE_PARITY.md#editable-template-gallery) for scope and inspiration links.
+
 **Editor tools update:** color adjustments, audio fades, clip speed, timed titles, timeline markers/snapping/zoom, responsive panels and configurable exports. See [FEATURE_PARITY.md](FEATURE_PARITY.md) for implemented features, shortcuts, timing rules and verification limits.
 
 Create a complete working webapp called ReelForge for turning full-length uploaded videos into multiple shorts / Instagram Reels. User requested a modern 3D webapp and explicitly chose Lovable. Build an actual editor, not a marketing landing page.

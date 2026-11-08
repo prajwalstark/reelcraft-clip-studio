@@ -8,7 +8,7 @@ import {
 } from "./core";
 import { downloadBlob, exportClip, type ExportFormat } from "./exporter";
 
-export type Tab = "clip" | "frame" | "captions" | "export" | "color" | "audio" | "titles" | "markers";
+export type Tab = "templates" | "clip" | "frame" | "captions" | "export" | "color" | "audio" | "titles" | "markers";
 export interface Job {
   id: string;
   clipId: string;

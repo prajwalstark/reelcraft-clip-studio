@@ -1,5 +1,6 @@
 // Pure ReelForge model + logic. No React, no DOM. Shared by preview, export and tests.
 
+import type { TemplateSettings } from "./templates";
 import type { ColorSettings, AudioSettings, TitleSettings, Marker, ExportSettings } from "./editing";
 export type Aspect = "9:16" | "1:1" | "16:9";
 export const ASPECTS: Record<Aspect, { w: number; h: number; label: string }> = {
@@ -25,6 +26,7 @@ export interface Clip {
   audio?: AudioSettings;
   speed?: number;
   overlay?: TitleSettings;
+  template?: TemplateSettings;
 }
 export interface Caption {
   id: string;
