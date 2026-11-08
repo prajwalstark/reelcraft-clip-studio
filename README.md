@@ -1,14 +1,34 @@
-# Welcome to your Lovable project
+# Reelcraft Clip Studio
+
+Create a complete working webapp called ReelForge for turning full-length uploaded videos into multiple shorts / Instagram Reels. User requested a modern 3D webapp and explicitly chose Lovable. Build an actual editor, not a marketing landing page.
+
+Reference repository reviewed through GitHub: https://github.com/storytold/filmcraft . Its docs/architecture.md describe separate media/project model, command-based edits, undo snapshots, timeline trim/split, caption tracks, export jobs with progress/cancel, and vertical presets. docs/web.md describes local File/Blob-backed browser media, WebCodecs and WebAudio with capability checks. docs/captions.md describes timed caption editing, SRT/VTT import/export and burn-in. Filmcraft is Rust/egui/WASM, not React; use these workflow and architectural concepts as a reference for a fresh TypeScript implementation. Do not claim the Rust engine is connected unless you actually integrate and test it. Add a discreet About reference link; use original branding, no ArtCraft trademarks/assets.
+
+VISUAL: premium cinematic near-black charcoal (#090b10), frosted translucent layers, electric-lime primary action, restrained cyan accents, subtle grain, thin borders and beautiful typography. Make the app feel like a polished professional editing studio. Incorporate an actual interactive 3D film strip / floating frame sculpture in the empty upload workspace (Three.js / react-three-fiber if appropriate), mouse parallax and gently tilted glass clip cards, with reduced-motion and WebGL fallback. Keep timeline and editing controls flat/readable. Desktop left navigation, project/source rail, central vertical video preview on a spatial stage, right inspector, bottom real timeline, top project name/export action. Responsive mobile panel tabs. Minimal empty state, a small clearly marked optional demo, no fake completed projects/statistics.
+
+CORE END TO END, PRIORITIZE REAL FUNCTIONALITY:
+- Drag/drop and file picker for actual local video; inspect browser metadata (duration, dimensions), playable source and correct errors for unsupported media. Keep source local; object URLs and cleanup, no silent uploads.
+- Automatic full-video segmentation using chosen 15/30/60-second or custom duration, covering the full source with final short remainder. Make mode transparently 'Split by duration', not AI highlights. Allow editable clip titles, manual start/end, split, delete, duplicate and select multi-clip batch. Enforce valid ranges and no out-of-bounds/zero clips. Optional transcript-based breakpoints only if actually implemented.
+- Preview chosen range with audio, play/pause, seek, readable timecodes, draggable trim handles and keyboard accessible numeric trim controls. Crop 9:16 (1080x1920), 1:1, 16:9, draggable/slider focal point, fit/fill, and zoom; show exactly what export will render.
+- Captions: import SRT/VTT and/or manually add/edit timed captions, styles/size/color/position, safe-zone overlay and burn-in toggle. Sync captions to source timestamps and clip-relative export times. Download matching SRT. Do not fake speech recognition/AI analysis. No API keys required for core.
+- Real export of selected clip and batch queue, progress and cancel. Prefer reliable browser processing via suitable available libraries (WebCodecs/muxing or FFmpeg WASM with actual runtime support). At minimum implement real canvas compositing + source audio + MediaRecorder, using supported MIME selection: MP4/H264 if supported, clearly labeled WebM fallback if needed, never mislabeled .mp4. Download actual generated cropped videos with captions and original audio. Explain real-time export if that path is used, and supported-browser/resource limits. Keep preview/export crop math identical. Handle export failures, abort cleanup, audio absent, and source switching. Can offer ZIP batch with real output files. Do not ship pretend progress or toast-only export. Do not download original file in place of rendered clip.
+- Local project metadata persistence (IndexedDB or localStorage) with clear relink-source on reload if File cannot persist; project JSON export/import; undo/redo for edits. Local video files must never be falsely represented as retained.
+- All visible navigation/actions must do something useful; eliminate placeholder 'coming soon' features and fabricated AI scoring.
+- No auth/backend is needed for this local-first MVP. Do not require external paid AI services. Keep project unpublished; provide preview/editor for review.
+
+Validate with build/typechecks and available browser testing. Use a short generated/test video including audio to confirm import -> split -> trim -> crop -> caption -> actual export path; inspect exported duration/dimensions/audio when possible. Test boundary clip validation and SRT clip-relative timing. Report exact implementation and any verification limits. Finish as much of this functional MVP as possible in this first build.
 
 This project was built with [Lovable](https://lovable.dev).
 
+**Live app**: https://reelcraft-clip-studio.lovable.app
+
 ## Build with Lovable
 
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/16235142-99d8-44e3-b217-9aa33660305c).
 
 - **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
 ## Development
 
@@ -20,10 +40,3 @@ cd <repository-name>
 npm i
 npm run dev
 ```
-
-## Built with
-
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
