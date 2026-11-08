@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Download, FilePlus2, FolderOpen, Pause, Play, Redo2, Save, Scissors, Trash2, Undo2, Upload, X,
-  Captions as CapIcon, Crop, Film, Clapperboard, Plus,
+  Captions as CapIcon, Crop, Film, Clapperboard, Plus, Palette, Volume2, Type, Flag,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,10 +12,13 @@ import {
 import { drawFrame } from "@/lib/reelforge/render";
 import { downloadBlob, pickFormat } from "@/lib/reelforge/exporter";
 import {
-  activeClip, cancelAll, cancelJob, commit, downloadClipSRT, downloadZip, enqueue, exportProjectJSON,
+  activeClip, addMarker, cancelAll, cancelJob, commit, downloadClipSRT, downloadZip, enqueue, exportProjectJSON,
   getState, importProjectJSON, loadSource, media, newProjectAction, redo, removeJob, seek, setRt,
   undo, updateClip, useStore, type Tab,
 } from "@/lib/reelforge/store";
+import { audioGain, speedOf, outputDuration } from '@/lib/reelforge/editing';
+import { ColorPanel, AudioPanel, SpeedControl, TitlesPanel, MarkersPanel, QualityControls } from './ToolPanels';
+import { Timeline } from './Timeline';
 import { pickVideo } from "./EmptyStage";
 
 function pickFile(accept: string, cb: (f: File) => void) {
@@ -64,7 +67,7 @@ function TopBar() {
   const canRedo = useStore((s) => s.future.length > 0);
   const source = useStore((s) => s.project.source);
   return (
-    <header className="glass flex h-12 shrink-0 items-center gap-2 border-x-0 border-t-0 px-3">
+    <header className="glass flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-x-0 border-t-0 px-3 py-1">
       <div className="flex items-center gap-2 pr-2">
         <Clapperboard className="h-4 w-4 text-primary" />
         <span className="font-display text-lg italic leading-none">ReelForge</span>
@@ -78,7 +81,7 @@ function TopBar() {
       <span className="hidden text-xs text-muted-foreground tc md:inline">
         {source ? `${source.name} · ${source.width}×${source.height} · ${fmtTC(source.duration)}` : ""}
       </span>
-      <div className="ml-auto flex items-center gap-1">
+      <div className="ml-auto flex max-w-full flex-wrap items-center gap-1">
         <Button size="icon" variant="ghost" aria-label="Undo" disabled={!canUndo} onClick={undo}><Undo2 className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" aria-label="Redo" disabled={!canRedo} onClick={redo}><Redo2 className="h-4 w-4" /></Button>
         <span className="mx-1 h-5 w-px bg-border" />
@@ -107,7 +110,7 @@ function ClipList() {
   const duration = useStore((s) => s.project.source?.duration ?? 0);
   const allSel = clips.length > 0 && selected.length === clips.length;
   return (
-    <aside className="glass flex w-60 shrink-0 flex-col border-y-0 border-l-0">
+    <aside className="glass flex h-full w-full lg:w-60 shrink-0 flex-col border-y-0 border-l-0">
       <div className="flex items-center justify-between px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Shorts · {clips.length}</span>
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -138,7 +141,7 @@ function ClipList() {
                 <span className="rounded bg-muted px-1 text-[10px] tc text-muted-foreground">{c.framing.aspect}</span>
               </div>
               <div className="pl-5 text-[11px] tc text-muted-foreground">
-                {fmtTC(c.start)} → {fmtTC(c.end)} · {(c.end - c.start).toFixed(1)}s
+                {fmtTC(c.start)} → {fmtTC(c.end)} · {outputDuration(c).toFixed(1)}s output
               </div>
               {err && <div className="pl-5 text-[11px] text-destructive">{err}</div>}
             </div>
@@ -180,12 +183,15 @@ function Preview() {
       const s = getState();
       const cl = activeClip(s);
       if (!v || !c || !cl) return;
+      if (v.playbackRate !== speedOf(cl)) v.playbackRate = speedOf(cl);
+      v.preservesPitch = true;
+      v.volume = audioGain(cl, v.currentTime);
       if (!v.paused) {
         if (v.currentTime >= cl.end - 0.02) { v.pause(); v.currentTime = cl.end; setRt({ playing: false }); }
         if (Math.abs(s.rt.time - v.currentTime) > 0.03) setRt({ time: v.currentTime });
       }
       const ctx = c.getContext("2d");
-      if (ctx) drawFrame(ctx, v, c.width, c.height, cl.framing, s.project.captions, s.project.captionStyle, v.currentTime);
+      if (ctx) drawFrame(ctx, v, c.width, c.height, cl.framing, s.project.burnIn ? s.project.captions : null, s.project.captionStyle, v.currentTime, cl);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
@@ -221,7 +227,7 @@ function Preview() {
         <input
           aria-label="Seek within clip"
           type="range"
-          className="flex-1 accent-[var(--primary)]"
+          className="min-w-0 flex-1 accent-[var(--primary)]"
           min={clip?.start ?? 0}
           max={clip?.end ?? 1}
           step={0.01}
@@ -229,74 +235,11 @@ function Preview() {
           onChange={(e) => seek(Number(e.target.value))}
         />
         <span className="w-32 text-right text-xs tc text-muted-foreground">
-          {fmtTC(time - (clip?.start ?? 0))} / {fmtTC((clip?.end ?? 0) - (clip?.start ?? 0))}
+          {fmtTC(clip ? Math.max(0, time - clip.start) / speedOf(clip) : 0)} / {fmtTC(clip ? outputDuration(clip) : 0)}
         </span>
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <input type="checkbox" checked={safe} onChange={(e) => setRt({ safeZone: e.target.checked })} />Safe
         </label>
-      </div>
-    </div>
-  );
-}
-
-// ---------------- Timeline ----------------
-function Timeline() {
-  const clips = useStore((s) => s.project.clips);
-  const activeId = useStore((s) => s.rt.activeId);
-  const time = useStore((s) => s.rt.time);
-  const captions = useStore((s) => s.project.captions);
-  const d = useStore((s) => s.project.source?.duration ?? 1);
-  const bar = useRef<HTMLDivElement>(null);
-  const pct = (t: number) => `${(t / d) * 100}%`;
-  const tAt = (x: number) => {
-    const r = bar.current?.getBoundingClientRect();
-    if (!r || !r.width) return 0;
-    return Math.max(0, Math.min(d, ((x - r.left) / r.width) * d));
-  };
-  const drag = (c: Clip, edge: "start" | "end") => (e: React.PointerEvent) => {
-    e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => {
-      const t = tAt(ev.clientX);
-      const cur = getState().project.clips.find((x) => x.id === c.id);
-      if (!cur) return;
-      const [s, en] = edge === "start" ? clampRange(Math.min(t, cur.end - 0.5), cur.end, d) : clampRange(cur.start, Math.max(t, cur.start + 0.5), d);
-      updateClip(c.id, { start: s, end: en }, `trim-${c.id}`);
-      seek(edge === "start" ? s : en);
-    };
-    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-  return (
-    <div className="glass shrink-0 border-x-0 border-b-0 px-4 py-3">
-      <div className="mb-1 flex justify-between text-[10px] tc text-muted-foreground">
-        <span>00:00.00</span><span>Source timeline · drag handles to trim · click to seek</span><span>{fmtTC(d)}</span>
-      </div>
-      <div ref={bar} className="relative h-14 cursor-text rounded-md bg-track" onPointerDown={(e) => seek(tAt(e.clientX))} data-testid="timeline">
-        {clips.map((c, i) => {
-          const act = c.id === activeId;
-          return (
-            <div
-              key={c.id}
-              onPointerDown={(e) => { e.stopPropagation(); setRt({ activeId: c.id }); seek(tAt(e.clientX)); }}
-              className={`absolute top-1 h-8 rounded border text-[10px] overflow-hidden px-1 ${act ? "z-10 border-primary bg-primary/25 text-foreground" : i % 2 ? "border-cyan/30 bg-cyan/10 text-muted-foreground" : "border-border bg-accent/70 text-muted-foreground"}`}
-              style={{ left: pct(c.start), width: pct(c.end - c.start) }}
-            >
-              <span className="truncate">{c.title}</span>
-              {act && (
-                <>
-                  <div aria-label="Trim start handle" onPointerDown={drag(c, "start")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-primary" />
-                  <div aria-label="Trim end handle" onPointerDown={drag(c, "end")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-primary" />
-                </>
-              )}
-            </div>
-          );
-        })}
-        {captions.map((c) => (
-          <div key={c.id} className="absolute bottom-1 h-2 rounded-sm bg-cyan/60" style={{ left: pct(c.start), width: pct(c.end - c.start) }} title={c.text} />
-        ))}
-        <div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-foreground" style={{ left: pct(time) }} />
       </div>
     </div>
   );
@@ -335,7 +278,8 @@ function ClipTab({ clip }: { clip: Clip }) {
         <NumField label="Start (s)" value={clip.start} onCommit={(n) => { const [s, e] = clampRange(n, clip.end, d); updateClip(clip.id, { start: s, end: e }); seek(s); }} />
         <NumField label="End (s)" value={clip.end} onCommit={(n) => { const [s, e] = clampRange(clip.start, n, d); updateClip(clip.id, { start: s, end: e }); seek(e); }} />
       </div>
-      <div className="text-xs tc text-muted-foreground">Length {(clip.end - clip.start).toFixed(2)}s {err && <span className="text-destructive">· {err}</span>}</div>
+      <SpeedControl clip={clip} />
+      <div className="text-xs tc text-muted-foreground">Source length {(clip.end - clip.start).toFixed(2)}s {err && <span className="text-destructive">· {err}</span>}</div>
       <div className="flex flex-wrap gap-1">
         <Button size="sm" variant="secondary" onClick={() => { const [s, e] = clampRange(time, clip.end, d); updateClip(clip.id, { start: s, end: e }); }}>Set in = playhead</Button>
         <Button size="sm" variant="secondary" onClick={() => { const [s, e] = clampRange(clip.start, time, d); updateClip(clip.id, { start: s, end: e }); }}>Set out = playhead</Button>
@@ -492,6 +436,7 @@ function ExportTab({ clip }: { clip: Clip }) {
   const done = jobs.filter((j) => j.status === "done").length;
   return (
     <div className="space-y-3">
+      <QualityControls clip={clip} />
       <div className="text-[11px] text-muted-foreground">Output: {fmt}. Export renders in real time inside your browser; keep this tab visible. Nothing is uploaded.</div>
       <div className="flex flex-wrap gap-1">
         <Button size="sm" onClick={() => enqueue([clip.id])}><Film className="h-3.5 w-3.5" />Export this clip</Button>
@@ -532,10 +477,11 @@ function Inspector() {
   const tab = useStore((s) => s.rt.tab);
   const clip = useStore((s) => activeClip(s));
   const tabs: Array<[Tab, string, React.ComponentType<{ className?: string }>]> = [
-    ["clip", "Clip", Scissors], ["frame", "Frame", Crop], ["captions", "Captions", CapIcon], ["export", "Export", Download],
+    ["clip", "Clip", Scissors], ["frame", "Frame", Crop], ["color", "Color", Palette], ["audio", "Audio", Volume2],
+    ["titles", "Titles", Type], ["captions", "Captions", CapIcon], ["markers", "Markers", Flag], ["export", "Export", Download],
   ];
   return (
-    <aside className="glass flex w-80 shrink-0 flex-col border-y-0 border-r-0">
+    <aside className="glass flex h-full w-full lg:w-80 shrink-0 flex-col border-y-0 border-r-0">
       <div role="tablist" className="grid grid-cols-4 gap-1 border-b p-1.5">
         {tabs.map(([id, label, Icon]) => (
           <button
@@ -552,21 +498,37 @@ function Inspector() {
       <div className="flex-1 overflow-y-auto p-3">
         {!clip ? (
           <div className="text-sm text-muted-foreground">No clip. Split the video to create shorts.</div>
-        ) : tab === "clip" ? <ClipTab clip={clip} /> : tab === "frame" ? <FrameTab clip={clip} /> : tab === "captions" ? <CaptionsTab clip={clip} /> : <ExportTab clip={clip} />}
+        ) : tab === "clip" ? <ClipTab clip={clip} /> : tab === "frame" ? <FrameTab clip={clip} /> : tab === "captions" ? <CaptionsTab clip={clip} /> : tab === "color" ? <ColorPanel clip={clip} /> : tab === "audio" ? <AudioPanel clip={clip} /> : tab === "titles" ? <TitlesPanel clip={clip} /> : tab === "markers" ? <MarkersPanel /> : <ExportTab clip={clip} />}
       </div>
     </aside>
   );
 }
 
 export function Editor() {
+  const [panel, setPanel] = useState("preview");
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, select")) return;
+      if (t.closest("input, textarea, select, [contenteditable=true], [role=slider]")) return;
       const mod = e.metaKey || e.ctrlKey;
+      const state = getState(), clip = activeClip(state), key = e.key.toLowerCase();
       if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       else if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
-      else if (e.code === "Space") {
+      else if (mod && key === "k" && clip) {
+        e.preventDefault();
+        const parts = splitClip(clip, state.rt.time);
+        if (parts) commit(p => ({ ...p, clips: p.clips.flatMap(c => c.id === clip.id ? parts : [c]) }));
+        else toast.error("Playhead must be at least 0.5s inside the clip");
+      } else if (!mod && !e.altKey && clip && (key === "i" || key === "o")) {
+        e.preventDefault();
+        const d = state.project.source?.duration ?? 0;
+        const [start, end] = key === "i" ? clampRange(Math.min(state.rt.time, clip.end - .5), clip.end, d) : clampRange(clip.start, Math.max(state.rt.time, clip.start + .5), d);
+        updateClip(clip.id, { start, end });
+      } else if (!mod && !e.altKey && key === "m") { e.preventDefault(); addMarker(state.rt.time); }
+      else if (!mod && !e.altKey && (key === "arrowleft" || key === "arrowright")) {
+        e.preventDefault(); media.video?.pause(); setRt({ playing: false });
+        seek(state.rt.time + (key === "arrowleft" ? -1 : 1) * (e.shiftKey ? 1 : 1 / state.rt.stepFps));
+      } else if (e.code === "Space" && !t.closest("button")) {
         e.preventDefault();
         (document.querySelector('[aria-label="Play"],[aria-label="Pause"]') as HTMLButtonElement | null)?.click();
       }
@@ -577,13 +539,16 @@ export function Editor() {
   return (
     <div className="flex h-full flex-col">
       <TopBar />
+      <nav aria-label="Editor panels" className="flex gap-1 border-b p-1 lg:hidden">
+        {['clips', 'preview', 'tools'].map(id => <Button key={id} size="sm" variant={panel === id ? 'default' : 'ghost'} onClick={() => setPanel(id)}>{id === 'clips' ? 'Shorts' : id === 'preview' ? 'Preview' : 'Tools'}</Button>)}
+      </nav>
       <div className="flex min-h-0 flex-1">
-        <ClipList />
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className={`${panel === 'clips' ? 'flex' : 'hidden'} min-h-0 w-full lg:flex lg:w-auto`}><ClipList /></div>
+        <div className={`${panel === 'preview' ? 'flex' : 'hidden'} min-w-0 flex-1 flex-col lg:flex`}>
           <Preview />
           <Timeline />
         </div>
-        <Inspector />
+        <div className={`${panel === 'tools' ? 'flex' : 'hidden'} min-h-0 w-full lg:flex lg:w-auto`}><Inspector /></div>
       </div>
     </div>
   );

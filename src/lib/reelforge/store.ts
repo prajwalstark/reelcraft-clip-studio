@@ -1,19 +1,22 @@
+import { clipSRT, exportSnapshot, readProject } from "./editing";
 // Tiny external store: undoable project + non-undoable runtime state.
 import { useSyncExternalStore } from "react";
 import { zipSync } from "fflate";
 import {
-  clipCaptions, isProject, makeClips, newProject, slug, toSRT,
+  makeClips, newProject, slug, uid,
   type Clip, type Project, type SourceMeta,
 } from "./core";
 import { downloadBlob, exportClip, type ExportFormat } from "./exporter";
 
-export type Tab = "clip" | "frame" | "captions" | "export";
+export type Tab = "clip" | "frame" | "captions" | "export" | "color" | "audio" | "titles" | "markers";
 export interface Job {
   id: string;
   clipId: string;
   title: string;
   status: "queued" | "rendering" | "done" | "error" | "canceled";
   progress: number;
+  snapshot: ReturnType<typeof exportSnapshot>;
+  sourceFile: File;
   blob?: Blob;
   format?: ExportFormat;
   fileName?: string;
@@ -32,6 +35,9 @@ interface Runtime {
   playing: boolean;
   tab: Tab;
   safeZone: boolean;
+  timelineZoom: number;
+  snapping: boolean;
+  stepFps: number;
   jobs: Job[];
   hydrated: boolean;
 }
@@ -43,7 +49,7 @@ let state: State = {
   future: [],
   rt: {
     file: null, url: null, sourceError: null, loading: false, selected: [], activeId: null,
-    activeCaptionId: null, time: 0, playing: false, tab: "clip", safeZone: true, jobs: [], hydrated: false,
+    activeCaptionId: null, time: 0, playing: false, tab: "clip", safeZone: true, timelineZoom: 1, snapping: true, stepFps: 30, jobs: [], hydrated: false,
   },
 };
 const subs = new Set<() => void>();
@@ -96,6 +102,23 @@ export const activeClip = (s: State = state) => s.project.clips.find((c) => c.id
 export const updateClip = (id: string, patch: Partial<Clip>, key?: string) =>
   commit((p) => ({ ...p, clips: p.clips.map((c) => (c.id === id ? { ...c, ...patch } : c)) }), key);
 
+export function addMarker(time: number) {
+  commit((p) => ({
+    ...p,
+    markers: [
+      ...(p.markers ?? []),
+      { id: uid(), time, name: `Marker ${(p.markers?.length ?? 0) + 1}` },
+    ].sort((a, b) => a.time - b.time),
+  }));
+}
+
+// A different source/project cannot share undo history with the currently linked File.
+function replaceProject(project: Project) {
+  lastKey = "";
+  state = { ...state, project, past: [], future: [] };
+  fixSelection(); emit(); save();
+}
+
 // ---------- persistence ----------
 const LS = "reelforge:project:v1";
 let saveT = 0;
@@ -110,7 +133,7 @@ export function hydrate() {
   try {
     const raw = localStorage.getItem(LS);
     const p = raw ? JSON.parse(raw) : null;
-    if (isProject(p)) state = { ...state, project: p };
+    if (p) state = { ...state, project: readProject(p) };
   } catch { /* ignore */ }
   state = { ...state, rt: { ...state.rt, hydrated: true } };
   fixSelection();
@@ -119,23 +142,24 @@ export function hydrate() {
 export function newProjectAction() {
   cancelAll();
   releaseSource();
-  commit(() => newProject());
+  replaceProject(newProject());
 }
 export function exportProjectJSON() {
   const p = state.project;
   downloadBlob(new Blob([JSON.stringify(p, null, 2)], { type: "application/json" }), `${slug(p.name)}.reelforge.json`);
 }
 export async function importProjectJSON(file: File) {
-  const p = JSON.parse(await file.text());
-  if (!isProject(p)) throw new Error("Not a ReelForge project file.");
+  const p = readProject(JSON.parse(await file.text()));
+  cancelAll();
   const f = state.rt.file;
   const matches = !!f && !!p.source && f.name === p.source.name && f.size === p.source.size;
   if (!matches) releaseSource();
-  commit(() => p);
+  replaceProject(p);
 }
 
 // ---------- source media (stays local: object URL only, never uploaded) ----------
 function releaseSource() {
+  media.video?.pause();
   if (state.rt.url) URL.revokeObjectURL(state.rt.url);
   setRt({ file: null, url: null, time: 0, playing: false });
 }
@@ -186,7 +210,9 @@ export async function loadSource(file: File) {
         source: meta,
         clips: makeClips(m.duration, p.segmentSeconds),
         captions: [],
+        markers: [],
       }));
+      replaceProject(state.project);
       setRt({ activeId: state.project.clips[0]?.id ?? null, selected: [] });
     }
   } catch (e) {
@@ -204,11 +230,16 @@ const patchJob = (id: string, p: Partial<Job>) =>
   setRt({ jobs: state.rt.jobs.map((j) => (j.id === id ? { ...j, ...p } : j)) });
 
 export function enqueue(clipIds: string[]) {
-  const jobs = clipIds
-    .map((id) => state.project.clips.find((c) => c.id === id))
-    .filter(Boolean)
-    .map((c) => ({ id: Math.random().toString(36).slice(2), clipId: c!.id, title: c!.title, status: "queued" as const, progress: 0 }));
-  setRt({ jobs: [...state.rt.jobs, ...jobs], tab: "export" });
+  const file = state.rt.file;
+  if (!file) return;
+  const jobs: Job[] = clipIds.flatMap(id => {
+    const clip = state.project.clips.find(c => c.id === id);
+    if (!clip) return [];
+    return [{ id: Math.random().toString(36).slice(2), clipId: id, title: clip.title,
+      status: 'queued', progress: 0, snapshot: exportSnapshot(state.project, clip), sourceFile: file }];
+  });
+  media.video?.pause();
+  setRt({ jobs: [...state.rt.jobs, ...jobs], tab: "export", playing: false });
   void run();
 }
 async function run() {
@@ -218,19 +249,14 @@ async function run() {
     for (;;) {
       const job = state.rt.jobs.find((j) => j.status === "queued");
       if (!job) break;
-      const clip = state.project.clips.find((c) => c.id === job.clipId);
-      const url = state.rt.url;
-      if (!clip || !url) {
-        patchJob(job.id, { status: "error", error: !url ? "Source video not loaded — relink it first." : "Clip was deleted." });
-        continue;
-      }
+      const { clip, captions, style, settings } = job.snapshot;
+      const url = URL.createObjectURL(job.sourceFile);
       const ac = new AbortController();
       controllers.set(job.id, ac);
       patchJob(job.id, { status: "rendering", progress: 0 });
       try {
-        const p = state.project;
         const r = await exportClip({
-          url, clip, captions: p.burnIn ? p.captions : null, style: p.captionStyle, signal: ac.signal,
+          url, clip, captions, style, settings, signal: ac.signal,
           onProgress: (x) => patchJob(job.id, { progress: x }),
         });
         patchJob(job.id, {
@@ -243,6 +269,7 @@ async function run() {
         patchJob(job.id, { status: aborted ? "canceled" : "error", ...(aborted ? {} : { error: (e as Error).message }) });
       } finally {
         controllers.delete(job.id);
+        URL.revokeObjectURL(url);
       }
     }
   } finally {
@@ -268,17 +295,14 @@ export async function downloadZip() {
     let k = 2;
     while (files[n]) n = j.fileName!.replace(/(\.\w+)$/, `-${k++}$1`);
     files[n] = new Uint8Array(await j.blob!.arrayBuffer());
-    const clip = state.project.clips.find((c) => c.id === j.clipId);
-    if (clip) {
-      const srt = toSRT(clipCaptions(state.project.captions, clip.start, clip.end));
-      if (srt) files[n.replace(/\.\w+$/, ".srt")] = new TextEncoder().encode(srt);
-    }
+    const srt = j.snapshot.srt;
+    if (srt) files[n.replace(/\.\w+$/, ".srt")] = new TextEncoder().encode(srt);
   }
   const zip = zipSync(files, { level: 0 });
   downloadBlob(new Blob([zip.slice().buffer], { type: "application/zip" }), `${slug(state.project.name)}-shorts.zip`);
 }
 export function downloadClipSRT(clip: Clip) {
-  const srt = toSRT(clipCaptions(state.project.captions, clip.start, clip.end));
+  const srt = clipSRT(state.project.captions, clip);
   downloadBlob(new Blob([srt], { type: "application/x-subrip" }), `${slug(clip.title)}.srt`);
 }
 

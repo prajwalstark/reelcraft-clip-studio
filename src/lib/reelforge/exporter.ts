@@ -1,5 +1,6 @@
+import { audioGain, outputDuration, outputSize, speedOf, type ExportSettings } from "./editing";
 // Real-time browser export: canvas compositing + source audio via WebAudio -> MediaRecorder.
-import { ASPECTS, type Caption, type CaptionStyle, type Clip } from "./core";
+import { type Caption, type CaptionStyle, type Clip } from "./core";
 import { drawFrame } from "./render";
 
 const CANDIDATES = [
@@ -57,7 +58,7 @@ export function seekVideo(video: HTMLVideoElement, time: number, signal: AbortSi
 }
 
 /** Audio setup must succeed; exporting silently without sound is not acceptable. */
-export async function prepareAudio(video: HTMLVideoElement, stream: MediaStream, signal: AbortSignal, timeoutMs = 10_000): Promise<AudioContext> {
+export async function prepareAudio(video: HTMLVideoElement, stream: MediaStream, signal: AbortSignal, timeoutMs = 10_000, clip?: Clip, onGain?: (gain: GainNode) => void): Promise<AudioContext> {
   if (signal.aborted) throw canceled();
   let context: AudioContext | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -66,7 +67,13 @@ export async function prepareAudio(video: HTMLVideoElement, stream: MediaStream,
     context = new AudioContext();
     const source = context.createMediaElementSource(video);
     const destination = context.createMediaStreamDestination();
-    source.connect(destination);
+    if (clip) {
+      const gain = context.createGain();
+      gain.gain.value = audioGain(clip, clip.start);
+      source.connect(gain);
+      gain.connect(destination);
+      onGain?.(gain);
+    } else source.connect(destination);
     const tracks = destination.stream.getAudioTracks();
     if (!tracks.length) throw new Error("No audio recording track available");
     tracks.forEach((track) => stream.addTrack(track));
@@ -98,12 +105,13 @@ export function exportClip(opts: {
   style: CaptionStyle;
   signal: AbortSignal;
   onProgress: (p: number) => void;
+  settings?: ExportSettings;
 }): Promise<ExportResult> {
   const { url, clip, captions, style, signal, onProgress } = opts;
   if (signal.aborted) return Promise.reject(canceled());
   const format = pickFormat();
   if (!format) return Promise.reject(new Error("This browser cannot record canvas video (MediaRecorder/captureStream missing)."));
-  const { w, h } = ASPECTS[clip.framing.aspect];
+  const { w, h, fps, bitrate } = outputSize(clip, opts.settings);
 
   return new Promise<ExportResult>((resolve, reject) => {
     const video = document.createElement("video");
@@ -114,9 +122,10 @@ export function exportClip(opts: {
     canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) { reject(new Error("Canvas rendering unavailable. Try Chrome and export again.")); return; }
-    const stream = canvas.captureStream(30);
+    const stream = canvas.captureStream(fps);
     let audioCtx: AudioContext | null = null;
     let rec: MediaRecorder | null = null;
+    let gain: GainNode | null = null;
     let timer = 0;
     let done = false;
     let finishing = false;
@@ -148,7 +157,7 @@ export function exportClip(opts: {
     signal.addEventListener("abort", onAbort);
     video.onerror = () => fail(new Error("The source video could not be decoded for export."));
 
-    const draw = () => drawFrame(ctx, video, w, h, clip.framing, captions, style, video.currentTime);
+    const draw = () => drawFrame(ctx, video, w, h, clip.framing, captions, style, video.currentTime, clip);
 
     const finish = () => {
       if (done || finishing || !rec) return;
@@ -160,7 +169,7 @@ export function exportClip(opts: {
         const blob = new Blob(chunks, { type: format.mime.split(";")[0] ?? "video/webm" });
         cleanup();
         if (!blob.size) reject(new Error("Recorder produced an empty file."));
-        else resolve({ blob, format, width: w, height: h, duration: clip.end - clip.start });
+        else resolve({ blob, format, width: w, height: h, duration: outputDuration(clip) });
       };
       rec.stop();
     };
@@ -168,12 +177,14 @@ export function exportClip(opts: {
     video.onloadedmetadata = async () => {
       clearTimeout(metadataTimeout);
       try {
-        audioCtx = await prepareAudio(video, stream, signal);
+        audioCtx = await prepareAudio(video, stream, signal, 10_000, clip, (node) => { gain = node; });
         if (done) { void audioCtx.close().catch(() => {}); return; }
         await seekVideo(video, clip.start, signal);
         if (done || signal.aborted) { onAbort(); return; }
+        video.playbackRate = speedOf(clip);
+        video.preservesPitch = true;
         draw();
-        rec = new MediaRecorder(stream, { mimeType: format.mime, videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 160_000 });
+        rec = new MediaRecorder(stream, { mimeType: format.mime, videoBitsPerSecond: bitrate, audioBitsPerSecond: 160_000 });
         rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
         rec.onerror = () => fail(new Error("MediaRecorder error during export."));
         rec.start(500);
@@ -185,12 +196,13 @@ export function exportClip(opts: {
         // compositor clock so the recording receives frames throughout playback.
         timer = window.setInterval(() => {
           if (done || finishing) return;
+          if (gain) gain.gain.setTargetAtTime(audioGain(clip, video.currentTime), audioCtx!.currentTime, 0.005);
           draw();
           onProgress(Math.min(1, Math.max(0, (video.currentTime - clip.start) / span)));
           if (video.currentTime >= clip.end || video.ended) finish();
           if (video.currentTime > lastTime + 0.001) { lastTime = video.currentTime; lastAdvance = performance.now(); }
           if (!done && !finishing && performance.now() - lastAdvance > 15_000) fail(new Error("Export playback stalled. Keep the tab visible, reload the source, and try again."));
-        }, 25);
+        }, 1000 / fps);
       } catch (e) {
         fail(e);
       }

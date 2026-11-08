@@ -1,5 +1,7 @@
 # Reelcraft Clip Studio
 
+**Editor tools update:** color adjustments, audio fades, clip speed, timed titles, timeline markers/snapping/zoom, responsive panels and configurable exports. See [FEATURE_PARITY.md](FEATURE_PARITY.md) for implemented features, shortcuts, timing rules and verification limits.
+
 Create a complete working webapp called ReelForge for turning full-length uploaded videos into multiple shorts / Instagram Reels. User requested a modern 3D webapp and explicitly chose Lovable. Build an actual editor, not a marketing landing page.
 
 Reference repository reviewed through GitHub: https://github.com/storytold/filmcraft . Its docs/architecture.md describe separate media/project model, command-based edits, undo snapshots, timeline trim/split, caption tracks, export jobs with progress/cancel, and vertical presets. docs/web.md describes local File/Blob-backed browser media, WebCodecs and WebAudio with capability checks. docs/captions.md describes timed caption editing, SRT/VTT import/export and burn-in. Filmcraft is Rust/egui/WASM, not React; use these workflow and architectural concepts as a reference for a fresh TypeScript implementation. Do not claim the Rust engine is connected unless you actually integrate and test it. Add a discreet About reference link; use original branding, no ArtCraft trademarks/assets.
