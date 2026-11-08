@@ -18,7 +18,7 @@ export function pickFormat(): ExportFormat | null {
   for (const m of CANDIDATES) {
     if (MediaRecorder.isTypeSupported(m)) {
       const mp4 = m.startsWith("video/mp4");
-      return { mime: m, ext: mp4 ? "mp4" : "webm", label: mp4 ? "MP4 (H.264)" : "WebM fallback (VP9/VP8 + Opus)" };
+      return { mime: m, ext: mp4 ? "mp4" : "webm", label: mp4 ? (m.includes("avc1") ? "MP4 (H.264)" : "MP4 (browser-selected codecs)") : "WebM fallback (VP9/VP8 + Opus)" };
     }
   }
   return null;
@@ -181,18 +181,13 @@ export function exportClip(opts: {
         if (done) return;
         lastAdvance = performance.now();
         const span = clip.end - clip.start;
-        const loop = () => {
+        // A detached video can starve requestVideoFrameCallback. Use a bounded
+        // compositor clock so the recording receives frames throughout playback.
+        timer = window.setInterval(() => {
           if (done || finishing) return;
           draw();
           onProgress(Math.min(1, Math.max(0, (video.currentTime - clip.start) / span)));
           if (video.currentTime >= clip.end || video.ended) finish();
-          else if ("requestVideoFrameCallback" in video) video.requestVideoFrameCallback(loop);
-          else requestAnimationFrame(loop);
-        };
-        loop();
-        // Safety net for end detection if frame callbacks are throttled.
-        timer = window.setInterval(() => {
-          if (!done && (video.currentTime >= clip.end || video.ended)) finish();
           if (video.currentTime > lastTime + 0.001) { lastTime = video.currentTime; lastAdvance = performance.now(); }
           if (!done && !finishing && performance.now() - lastAdvance > 15_000) fail(new Error("Export playback stalled. Keep the tab visible, reload the source, and try again."));
         }, 25);
