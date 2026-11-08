@@ -249,7 +249,8 @@ function Timeline() {
   const bar = useRef<HTMLDivElement>(null);
   const pct = (t: number) => `${(t / d) * 100}%`;
   const tAt = (x: number) => {
-    const r = bar.current!.getBoundingClientRect();
+    const r = bar.current?.getBoundingClientRect();
+    if (!r || !r.width) return 0;
     return Math.max(0, Math.min(d, ((x - r.left) / r.width) * d));
   };
   const drag = (c: Clip, edge: "start" | "end") => (e: React.PointerEvent) => {
@@ -308,7 +309,7 @@ function ClipTab({ clip }: { clip: Clip }) {
   const time = useStore((s) => s.rt.time);
   const [custom, setCustom] = useState(String(seg));
   const resplit = (n: number) => {
-    if (!(n >= 0.5)) return toast.error("Duration must be at least 0.5s");
+    if (!(n >= 0.5)) { toast.error("Duration must be at least 0.5s"); return; }
     if (getState().project.clips.length > 1 && !confirm(`Replace all clips with ${n}s segments?`)) return;
     commit((p) => ({ ...p, segmentSeconds: n, clips: makeClips(d, n, clip.framing) }));
     setRt({ activeId: getState().project.clips[0]?.id ?? null });
@@ -343,7 +344,7 @@ function ClipTab({ clip }: { clip: Clip }) {
           variant="secondary"
           onClick={() => {
             const r = splitClip(clip, time);
-            if (!r) return toast.error("Playhead must be ≥0.5s inside the clip to split");
+            if (!r) { toast.error("Playhead must be ≥0.5s inside the clip to split"); return; }
             commit((p) => ({ ...p, clips: p.clips.flatMap((c) => (c.id === clip.id ? r : [c])) }));
           }}
         >
@@ -441,7 +442,7 @@ function CaptionsTab({ clip }: { clip: Clip }) {
           onClick={() =>
             pickFile(".srt,.vtt,text/vtt", async (f) => {
               const caps = parseSubtitles(await f.text());
-              if (!caps.length) return toast.error("No valid cues found in that file");
+              if (!caps.length) { toast.error("No valid cues found in that file"); return; }
               commit((p) => ({ ...p, captions: [...p.captions, ...caps].sort((a, b) => a.start - b.start) }));
               toast.success(`Imported ${caps.length} captions`);
             })
@@ -509,7 +510,7 @@ function ExportTab({ clip }: { clip: Clip }) {
                 <Button size="icon" variant="ghost" aria-label="Cancel export" className="h-6 w-6" onClick={() => cancelJob(j.id)}><X className="h-3 w-3" /></Button>
               )}
               {j.status === "done" && j.blob && (
-                <Button size="sm" variant="secondary" className="h-6 px-2" onClick={() => downloadBlob(j.blob!, j.fileName!)}><Download className="h-3 w-3" />Download</Button>
+                <Button size="sm" variant="secondary" className="h-6 px-2" onClick={() => { if (j.blob && j.fileName) downloadBlob(j.blob, j.fileName); }}><Download className="h-3 w-3" />Download</Button>
               )}
               {j.status !== "queued" && j.status !== "rendering" && (
                 <Button size="icon" variant="ghost" aria-label="Remove job" className="h-6 w-6" onClick={() => removeJob(j.id)}><Trash2 className="h-3 w-3" /></Button>

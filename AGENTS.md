@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Browser exports use bounded, abort-aware decoded-frame seeking and require successful audio initialization; this prevents hung jobs and silent audio loss.
