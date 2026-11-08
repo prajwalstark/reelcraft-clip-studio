@@ -1,5 +1,6 @@
 // Pure ReelForge model + logic. No React, no DOM. Shared by preview, export and tests.
 
+import type { ColorSettings, AudioSettings, TitleSettings, Marker, ExportSettings } from "./editing";
 export type Aspect = "9:16" | "1:1" | "16:9";
 export const ASPECTS: Record<Aspect, { w: number; h: number; label: string }> = {
   "9:16": { w: 1080, h: 1920, label: "Reel / Short 1080×1920" },
@@ -20,6 +21,10 @@ export interface Clip {
   start: number; // source seconds
   end: number;
   framing: Framing;
+  color?: ColorSettings;
+  audio?: AudioSettings;
+  speed?: number;
+  overlay?: TitleSettings;
 }
 export interface Caption {
   id: string;
@@ -55,6 +60,8 @@ export interface Project {
   burnIn: boolean;
   segmentSeconds: number;
   updatedAt: number;
+  markers?: Marker[];
+  exportSettings?: ExportSettings;
 }
 
 export const MIN_CLIP = 0.5;
@@ -94,7 +101,7 @@ export const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a
  * it is merged into the previous clip so the whole source is always covered. */
 export function segmentByDuration(duration: number, seg: number): Array<[number, number]> {
   if (!(duration > 0) || !Number.isFinite(duration)) return [];
-  const len = Math.max(MIN_CLIP, seg);
+  const len = Math.max(MIN_CLIP, Number.isFinite(seg) ? seg : 30);
   const out: Array<[number, number]> = [];
   let s = 0;
   while (s < duration - 1e-6) {

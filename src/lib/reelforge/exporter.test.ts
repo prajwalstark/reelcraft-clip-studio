@@ -50,6 +50,26 @@ describe("bounded export preparation", () => {
     vi.stubGlobal("AudioContext", class { constructor() { throw new Error("denied"); } });
     await expect(prepareAudio(fakeVideo(), {} as MediaStream, new AbortController().signal)).rejects.toThrow("Allow sound/autoplay");
   });
+  it("routes exported audio through the clip gain before the recording destination", async () => {
+    const gain = { gain: { value: 1 }, connect: vi.fn() }, source = { connect: vi.fn() };
+    const destination = { stream: { getAudioTracks: () => [{}] } }, onGain = vi.fn();
+    vi.stubGlobal("AudioContext", class {
+      state = "running";
+      createMediaElementSource() { return source; }
+      createMediaStreamDestination() { return destination; }
+      createGain() { return gain; }
+      async resume() {}
+      async close() {}
+    });
+    await prepareAudio(fakeVideo(), { addTrack: vi.fn() } as unknown as MediaStream, new AbortController().signal, 100, {
+      id: "c", title: "Muted", start: 0, end: 3, framing: DEFAULT_FRAMING,
+      audio: { volume: .8, muted: true, fadeIn: 0, fadeOut: 0 },
+    }, onGain);
+    expect(source.connect).toHaveBeenCalledWith(gain);
+    expect(gain.connect).toHaveBeenCalledWith(destination);
+    expect(gain.gain.value).toBe(0);
+    expect(onGain).toHaveBeenCalledWith(gain);
+  });
   it("bounds suspended audio initialization and closes the failed context", async () => {
     vi.useFakeTimers();
     const close = vi.fn(async () => {});
