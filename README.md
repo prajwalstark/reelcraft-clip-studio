@@ -54,7 +54,7 @@ Choose **Sequence Studio** in the workspace bar. It is a separate multitrack edi
 3. Drag clips to move them between compatible tracks. Use the inspector for exact frame start/duration and source-in trimming, volume, fit, position, scale, opacity and fades. Split at the playhead, undo/redo, or ripple-delete a non-overlapping clip on its own track. Lock tracks to prevent clip edits; M mutes sound and H hides picture independently.
 4. Select a later clip and choose **Crossfade from previous**. This overlaps the two clips by up to half a second, fades the incoming picture over the outgoing picture and applies complementary linear audio gains. It rejects overlaps with a third clip. Moving or trimming a transition endpoint removes an invalid transition.
 5. Save a `.reelseq.json` project. Autosave retains the latest edit locally. Source files are not embedded or uploaded; after reloading/opening, relink each original file using its matching name, size and modification timestamp. Switching between workspaces retains the current sequence's file handles for this page session.
-6. Export 720p or 1080p at 24 or 30 fps, in landscape, portrait or square. Mediabunny decodes and composites each frame at its explicit timestamp. MP4/H.264/AAC is used when the browser supports those encoders, otherwise WebM/VP9/Opus. Files have the matching extension. Missing files, unsupported codecs and audio decode errors stop the export. Cancel releases decoder and encoder resources; per-operation timeouts prevent indefinite waits.
+6. Export 720p, 1080p or 2160p at 24 or 30 fps, in landscape, portrait or square. Mediabunny decodes and composites each frame at its explicit timestamp. MP4/H.264/AAC is used when the browser supports those encoders, otherwise WebM/VP9/Opus. Files have the matching extension. Missing files, unsupported codecs and audio decode errors stop the export. Cancel releases decoder and encoder resources; per-operation timeouts prevent indefinite waits.
 
 ### Current limits
 
@@ -63,3 +63,22 @@ Choose **Sequence Studio** in the workspace bar. It is a separate multitrack edi
 - Preview defaults to 360p (Faster); choose 720p (Detail) in the program monitor when needed. Decoder sessions and canvas buffers are reused across seeks and edits, and prepared audio is reused across pause/seek until the sequence changes. Preview resolution does not affect export resolution. Preview can skip frames under load; export encodes every frame. Codec availability depends on the browser/device. This is a browser editor, not a full Premiere replacement.
 - No proxies, nested sequences, advanced color tools, keyframes, multicam, transcription, cloud rendering or sequence-template conversion in this milestone.
 - Before publishing, run a real-browser smoke test with video plus music: split/trim, crossfade, preview, export, cancel, reload/relink, and verify the exported file's sound and timing. The implementation environment could not launch Chromium because its socket creation was blocked; automated tests cover editing, mixing, component interactions and the encoder orchestration with mocked browser codecs.
+
+
+### Video Enhancer and 4K UHD
+
+In **Sequence Studio**, import your file, add it to V1, and use **Video Enhancer** in the inspector. Balanced, Low Light and Vivid are fixed starting presets; adjust exposure (-2 to +2 stops), contrast, saturation and sharpening for the footage. Toggle enhancement off to compare the original treatment, then back on to restore your settings. Reset and undo/redo are supported. Enhancement settings are saved in the project; older sequence files load with enhancement disabled.
+
+Enhancement applies to the entire composited sequence, including images. Preview and export share a reusable WebGL shader pass with no CPU pixel readback. It adjusts existing pixels; it is not AI super-resolution, denoising, stabilization, HDR conversion or reconstruction of missing detail. The Low Light preset can also make existing noise more visible. The existing Shorts editor keeps its own controls.
+
+The default export selection is now the highest offered resolution:
+
+| Canvas | 2160p output |
+| --- | --- |
+| Landscape 16:9 | 3840 × 2160 (4K UHD) |
+| Portrait 9:16 | 2160 × 3840 |
+| Square 1:1 | 2160 × 2160 |
+
+UHD export requests a 32 Mbps video bitrate. Lower-resolution inputs are upscaled; higher-resolution inputs are scaled to the selected output. Preview remains at 360p or 720p independently. The app checks encoder support at the exact output dimensions and frame rate, including audio support, before mixing/rendering. Unsupported UHD exports stop with a clear error instead of silently downscaling. If enhancement is enabled, insufficient GPU limits or context loss also stop the export rather than dropping the effect.
+
+The existing 180-second sequence limit still applies. UHD rendering uses more GPU memory and produces larger in-memory download files, so device/browser capabilities may limit practical export size. Before publishing, verify original/enhanced comparison, image orientation, audio sync and exported file dimensions using real footage in a browser. Automated tests cover GPU orchestration with mocks, saved settings and export negotiation; they do not prove real-device shader rendering or UHD codec support.

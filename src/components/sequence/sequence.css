@@ -545,3 +545,15 @@
     display: none;
   }
 }
+
+.seq-enhancer {
+  border-top: 1px solid var(--sq-line) !important;
+  padding-top: 8px !important;
+}
+.seq-enhancer .seq-actions {
+  margin: 8px 0;
+}
+.seq-enhancer .seq-actions button {
+  font-size: 10px;
+  padding: 4px 6px;
+}

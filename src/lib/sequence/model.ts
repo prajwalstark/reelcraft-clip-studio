@@ -1,3 +1,4 @@
+import { type Enhancement, validEnhancement } from "./enhancer";
 export const MAX_SECONDS = 180;
 export const TRACK_IDS = ["V1", "V2", "V3", "A1", "A2", "A3"] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
@@ -46,6 +47,7 @@ export interface Sequence {
   assets: Asset[];
   tracks: Track[];
   items: Item[];
+  enhancement?: Enhancement;
 }
 export const id = () => crypto.randomUUID();
 export const fresh = (): Sequence => ({
@@ -63,7 +65,7 @@ export const totalFrames = (s: Sequence) => Math.max(0, ...s.items.map(end));
 export const videoTrack = (t: TrackId) => t.startsWith("V");
 export const trackOf = (s: Sequence, t: TrackId) => s.tracks.find((x) => x.id === t)!;
 export const assetOf = (s: Sequence, c: Item) => s.assets.find((a) => a.id === c.assetId)!;
-export const dimensions = (s: Sequence, res: 360 | 720 | 1080) =>
+export const dimensions = (s: Sequence, res: 360 | 720 | 1080 | 2160) =>
   s.aspect === "9:16"
     ? { width: res, height: (res / 9) * 16 }
     : s.aspect === "1:1"
@@ -349,6 +351,8 @@ export function parseSequence(value: unknown): Sequence {
     s.tracks.length !== 6
   )
     throw new Error("Unsupported sequence file.");
+  if (s.enhancement !== undefined && !validEnhancement(s.enhancement))
+    throw new Error("Invalid video enhancement settings.");
   const ids = new Set<string>();
   for (const a of s.assets) {
     if (

@@ -1,3 +1,4 @@
+import { FrameEnhancer, enhancementActive } from "./enhancer";
 import {
   ALL_FORMATS,
   Input,
@@ -183,6 +184,13 @@ export class MediaSession {
   private sinks = new Map<string, CanvasSink>();
   private iterators = new Map<string, AsyncGenerator<WrappedCanvas | null, void, unknown>>();
   private closed = false;
+  private enhancer: FrameEnhancer | undefined;
+  prepareEnhancement(width: number, height: number) {
+    if (enhancementActive(this.s.enhancement)) {
+      this.enhancer ??= new FrameEnhancer();
+      this.enhancer.checkSize(width, height);
+    }
+  }
   constructor(
     public s: Sequence,
     readonly files: Files,
@@ -193,6 +201,7 @@ export class MediaSession {
   dispose = () => {
     if (this.closed) return;
     this.closed = true;
+    this.enhancer?.dispose();
     this.signal.removeEventListener("abort", this.dispose);
     for (const input of this.inputs.values()) input.dispose();
     for (const b of this.pictures.values()) b.close();
@@ -223,6 +232,8 @@ export class MediaSession {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas is unavailable.");
     ctx.globalAlpha = 1;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     for (const c of visualItems(s, frame)) {
@@ -294,6 +305,10 @@ export class MediaSession {
       }
     }
     ctx.globalAlpha = 1;
+    if (enhancementActive(s.enhancement)) {
+      this.enhancer ??= new FrameEnhancer();
+      this.enhancer.apply(canvas, s.enhancement!);
+    }
   }
   async audio(progress: (value: number) => void = () => {}): Promise<AudioBuffer | null> {
     const clips = this.s.items.filter(
@@ -335,7 +350,7 @@ export class MediaSession {
 export async function exportSequence(
   s: Sequence,
   files: Files,
-  res: 720 | 1080,
+  res: 720 | 1080 | 2160,
   signal: AbortSignal,
   progress: (message: string) => void,
 ) {
@@ -346,21 +361,28 @@ export async function exportSequence(
   const session = new MediaSession(s, files, signal);
   let output: Output | undefined;
   try {
-    progress("Mixing audio…");
-    const audio = await session.audio((p) => progress(`Mixing audio ${Math.round(p * 100)}%`));
+    progress("Checking export support…");
+    const needsAudio = s.items.some(
+      (c) => assetOf(s, c).hasAudio && c.volume > 0 && !trackOf(s, c.track).muted,
+    );
     const size = dimensions(s, res),
-      quality = new Quality({ bitrate: res === 1080 ? 8e6 : 4e6 }),
+      quality = new Quality({ bitrate: res === 2160 ? 32e6 : res === 1080 ? 8e6 : 4e6 }),
       audioQuality = new Quality({ bitrate: 128e3 });
     const supported = async (v: "avc" | "vp9", a: "aac" | "opus") =>
       (await bounded(canEncodeVideo(v, { ...size, frameRate: s.fps, quality }), signal)) &&
-      (!audio ||
+      (!needsAudio ||
         (await bounded(
           canEncodeAudio(a, { numberOfChannels: 2, sampleRate: RATE, quality: audioQuality }),
           signal,
         )));
     const mp4 = await supported("avc", "aac");
     if (!mp4 && !(await supported("vp9", "opus")))
-      throw new Error("This browser has no compatible encoder. Try current Chrome or Edge.");
+      throw new Error(
+        `This browser cannot encode ${size.width}×${size.height} at ${s.fps} fps with the required audio. Choose a lower resolution or try Chrome/Edge. No lower-resolution file was substituted.`,
+      );
+    session.prepareEnhancement(size.width, size.height);
+    progress("Mixing audio…");
+    const audio = await session.audio((p) => progress(`Mixing audio ${Math.round(p * 100)}%`));
     const canvas = document.createElement("canvas");
     Object.assign(canvas, size);
     const target = new BufferTarget();
@@ -396,6 +418,8 @@ export async function exportSequence(
     return {
       blob: new Blob([target.buffer], { type: mp4 ? "video/mp4" : "video/webm" }),
       extension: mp4 ? "mp4" : "webm",
+      width: size.width,
+      height: size.height,
     };
   } finally {
     session.dispose();
