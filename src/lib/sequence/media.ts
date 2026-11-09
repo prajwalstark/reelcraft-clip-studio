@@ -184,7 +184,7 @@ export class MediaSession {
   private iterators = new Map<string, AsyncGenerator<WrappedCanvas | null, void, unknown>>();
   private closed = false;
   constructor(
-    readonly s: Sequence,
+    public s: Sequence,
     readonly files: Files,
     readonly signal: AbortSignal,
   ) {
@@ -219,13 +219,14 @@ export class MediaSession {
   }
   async draw(canvas: HTMLCanvasElement, frame: number, sequential = false) {
     this.signal.throwIfAborted();
+    const s = this.s; // Keep one immutable edit snapshot throughout this asynchronous draw.
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas is unavailable.");
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (const c of visualItems(this.s, frame)) {
-      const a = assetOf(this.s, c);
+    for (const c of visualItems(s, frame)) {
+      const a = assetOf(s, c);
       let image: CanvasImageSource;
       if (a.kind === "image") {
         let b = this.pictures.get(a.id);
@@ -248,7 +249,10 @@ export class MediaSession {
           const track = await bounded(this.input(a).getPrimaryVideoTrack(), this.signal);
           if (!track || !(await bounded(track.canDecode(), this.signal)))
             throw new Error(`Cannot decode ${a.name}.`);
-          sink = new CanvasSink(track, { poolSize: 1, width: Math.min(a.width, canvas.width * 2) });
+          sink = new CanvasSink(track, {
+            poolSize: 1,
+            width: Math.min(a.width, Math.max(canvas.width, canvas.height) * (sequential ? 2 : 1)),
+          });
           this.sinks.set(key, sink);
         }
         let wrapped: WrappedCanvas | null | undefined;
@@ -257,7 +261,7 @@ export class MediaSession {
           if (!it) {
             const times = Array.from(
               { length: c.frames },
-              (_, i) => a.origin + c.sourceIn + i / this.s.fps,
+              (_, i) => a.origin + c.sourceIn + i / s.fps,
             );
             it = sink.canvasesAtTimestamps(times);
             this.iterators.set(c.id, it);
@@ -266,7 +270,7 @@ export class MediaSession {
           wrapped = next.done ? null : next.value;
         } else
           wrapped = await bounded(
-            sink.getCanvas(a.origin + c.sourceIn + (frame - c.start) / this.s.fps),
+            sink.getCanvas(a.origin + c.sourceIn + (frame - c.start) / s.fps),
             this.signal,
           );
         if (!wrapped) throw new Error(`No decoded frame in ${a.name} at the requested time.`);
@@ -280,7 +284,7 @@ export class MediaSession {
         ) * c.scale;
       const w = a.width * ratio,
         h = a.height * ratio;
-      ctx.globalAlpha = clipLevel(this.s, c, frame);
+      ctx.globalAlpha = clipLevel(s, c, frame);
       ctx.drawImage(image, canvas.width * c.x - w / 2, canvas.height * c.y - h / 2, w, h);
       if (sequential && frame === end(c) - 1) {
         const iterator = this.iterators.get(c.id);
