@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { memo, useEffect, useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 import {
   type Sequence,
@@ -126,7 +126,15 @@ function Source({
     </div>
   );
 }
-function Waveform({ asset, item, fps }: { asset: Asset; item: Item; fps: number }) {
+const Waveform = memo(function Waveform({
+  asset,
+  item,
+  fps,
+}: {
+  asset: Asset;
+  item: Item;
+  fps: number;
+}) {
   if (!asset.peaks.length) return null;
   const count = 48;
   return (
@@ -159,7 +167,7 @@ function Waveform({ asset, item, fps }: { asset: Asset; item: Item; fps: number 
       })}
     </svg>
   );
-}
+});
 export default function SequenceStudio({ active = true }: { active?: boolean }) {
   const [sequence, setSequence] = useState<Sequence>(fresh),
     [files, setFiles] = useState<Files>(new Map()),

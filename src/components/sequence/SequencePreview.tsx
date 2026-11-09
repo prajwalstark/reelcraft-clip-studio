@@ -17,6 +17,10 @@ export function SequencePreview({
   disabled: boolean;
   seekVersion: number;
 }) {
+  const [quality, setQuality] = useState<360 | 720>(360);
+  const latest = useRef(sequence);
+  latest.current = sequence;
+  const revision = useRef(0);
   const canvas = useRef<HTMLCanvasElement>(null),
     current = useRef(frame),
     setter = useRef(onFrame);
@@ -27,9 +31,12 @@ export function SequencePreview({
     [error, setError] = useState("");
   const stopRef = useRef<() => void>(() => {}),
     playRef = useRef<() => Promise<void>>(async () => {});
+  const redrawRef = useRef<() => void>(() => {});
   useEffect(() => {
     const controller = new AbortController(),
-      session = new MediaSession(sequence, files, controller.signal);
+      session = new MediaSession(latest.current, files, controller.signal);
+    const scratch = document.createElement("canvas");
+    let cachedAudio: { sequence: Sequence; buffer: AudioBuffer | null } | undefined;
     let audioController: AbortController | undefined;
     let raf = 0,
       last = -1,
@@ -53,11 +60,18 @@ export function SequencePreview({
       setPreparing(false);
     };
     stopRef.current = stop;
+    redrawRef.current = () => {
+      stop();
+      last = -1;
+      revision.current++;
+      setError("");
+    };
     setError("");
     setPlaying(false);
     setPreparing(false);
     const tick = () => {
       if (controller.signal.aborted) return;
+      const sequence = latest.current;
       if (active) {
         const seconds =
           offset + (context ? context.currentTime - anchor : (performance.now() - anchor) / 1000);
@@ -71,22 +85,29 @@ export function SequencePreview({
       if (!drawing && wanted !== last && canvas.current) {
         drawing = true;
         last = wanted;
-        const scratch = document.createElement("canvas");
-        Object.assign(scratch, dimensions(sequence, 720));
+        const size = dimensions(sequence, quality);
+        if (scratch.width !== size.width || scratch.height !== size.height)
+          Object.assign(scratch, size);
+        const generation = revision.current;
+        session.s = sequence;
         void session
           .draw(scratch, wanted)
           .then(() => {
-            if (!controller.signal.aborted && (active || wanted === current.current)) {
+            if (
+              !controller.signal.aborted &&
+              generation === revision.current &&
+              (active || wanted === current.current)
+            ) {
               const c = canvas.current;
               if (c) {
-                c.width = scratch.width;
-                c.height = scratch.height;
+                if (c.width !== scratch.width) c.width = scratch.width;
+                if (c.height !== scratch.height) c.height = scratch.height;
                 c.getContext("2d")?.drawImage(scratch, 0, 0);
               }
             }
           })
           .catch((e) => {
-            if (!controller.signal.aborted) {
+            if (!controller.signal.aborted && generation === revision.current) {
               setError(e instanceof Error ? e.message : String(e));
               stop();
             }
@@ -100,6 +121,7 @@ export function SequencePreview({
     playRef.current = async () => {
       stop();
       const token = playToken;
+      const sequence = latest.current;
       setError("");
       setPreparing(true);
       audioController = new AbortController();
@@ -109,9 +131,11 @@ export function SequencePreview({
         // Resume in the button's user gesture before asynchronous decoding.
         context = new AudioContext({ sampleRate: 48000 });
         await bounded(context.resume(), audioSignal);
-        const audio = await audioSession.audio();
+        const audio =
+          cachedAudio?.sequence === sequence ? cachedAudio.buffer : await audioSession.audio();
         audioSession.dispose();
         if (controller.signal.aborted || token !== playToken) return;
+        cachedAudio = { sequence, buffer: audio };
         if (current.current >= totalFrames(sequence) - 1) setter.current(0);
         offset = current.current >= totalFrames(sequence) - 1 ? 0 : current.current / sequence.fps;
         anchor = context!.currentTime;
@@ -133,14 +157,17 @@ export function SequencePreview({
         audioSession.dispose();
       }
     };
-    tick();
+    raf = requestAnimationFrame(tick);
     return () => {
       controller.abort();
       cancelAnimationFrame(raf);
       stop();
       session.dispose();
     };
-  }, [sequence, files, seekVersion]);
+  }, [files, quality]);
+  useEffect(() => {
+    redrawRef.current();
+  }, [sequence, seekVersion]);
   useEffect(() => {
     if (disabled) stopRef.current();
   }, [disabled]);
@@ -148,6 +175,15 @@ export function SequencePreview({
     <section className="seq-monitor">
       <div className="seq-panel-heading">
         <span>PROGRAM</span>
+        <select
+          aria-label="Preview quality"
+          value={quality}
+          disabled={disabled}
+          onChange={(e) => setQuality(Number(e.target.value) as 360 | 720)}
+        >
+          <option value={360}>360p · Faster</option>
+          <option value={720}>720p · Detail</option>
+        </select>
         <span>
           {sequence.aspect} · {sequence.fps} fps
         </span>

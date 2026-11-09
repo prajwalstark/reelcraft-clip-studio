@@ -63,7 +63,7 @@ export const totalFrames = (s: Sequence) => Math.max(0, ...s.items.map(end));
 export const videoTrack = (t: TrackId) => t.startsWith("V");
 export const trackOf = (s: Sequence, t: TrackId) => s.tracks.find((x) => x.id === t)!;
 export const assetOf = (s: Sequence, c: Item) => s.assets.find((a) => a.id === c.assetId)!;
-export const dimensions = (s: Sequence, res: 720 | 1080) =>
+export const dimensions = (s: Sequence, res: 360 | 720 | 1080) =>
   s.aspect === "9:16"
     ? { width: res, height: (res / 9) * 16 }
     : s.aspect === "1:1"
