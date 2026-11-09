@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 import {
   type Sequence,
+  dimensions,
   type Asset,
   type Item,
   type TrackId,
@@ -21,6 +22,12 @@ import {
   transitionFrames,
 } from "@/lib/sequence/model";
 import { probe, download, exportSequence, type Files } from "@/lib/sequence/media";
+import {
+  DEFAULT_ENHANCEMENT,
+  ENHANCE_PRESETS,
+  validEnhancement,
+  type Enhancement,
+} from "@/lib/sequence/enhancer";
 import { SequencePreview } from "./SequencePreview";
 import "./sequence.css";
 const STORAGE = "reelcraft-sequence-v1";
@@ -184,7 +191,7 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
     [busy, setBusy] = useState(""),
     [ready, setReady] = useState(false),
     [zoom, setZoom] = useState(40),
-    [resolution, setResolution] = useState<720 | 1080>(720),
+    [resolution, setResolution] = useState<720 | 1080 | 2160>(2160),
     [storageError, setStorageError] = useState("");
   const seqRef = useRef(sequence);
   seqRef.current = sequence;
@@ -229,6 +236,15 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
       toast.error(errorText(e));
     }
   };
+  const enhancement = sequence.enhancement ?? DEFAULT_ENHANCEMENT;
+  const updateEnhancement = (patch: Partial<Enhancement>) =>
+    commit((s) => {
+      const next = { ...(s.enhancement ?? DEFAULT_ENHANCEMENT), ...patch };
+      if (!validEnhancement(next))
+        throw new Error("Enhancement value is outside the supported range.");
+      return { ...s, enhancement: next };
+    });
+  const outputSize = dimensions(sequence, resolution);
   const clip = sequence.items.find((c) => c.id === selected),
     sourceAsset = sequence.assets.find((a) => a.id === source);
   const patch = (p: Partial<Item>) => {
@@ -363,10 +379,17 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
             aria-label="Export resolution"
             value={resolution}
             disabled={!!busy}
-            onChange={(e) => setResolution(Number(e.target.value) as 720 | 1080)}
+            onChange={(e) => setResolution(Number(e.target.value) as 720 | 1080 | 2160)}
           >
             <option value={720}>720p</option>
             <option value={1080}>1080p</option>
+            <option value={2160}>
+              {sequence.aspect === "16:9"
+                ? "4K UHD · 3840×2160"
+                : sequence.aspect === "9:16"
+                  ? "4K portrait · 2160×3840"
+                  : "2160×2160 square"}
+            </option>
           </select>
           <button
             className="seq-primary"
@@ -385,7 +408,7 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                   result.blob,
                   `${sequence.name.replace(/[^a-z0-9_-]/gi, "_")}.${result.extension}`,
                 );
-                toast.success("Sequence exported.");
+                toast.success(`Sequence exported at ${result.width}×${result.height}.`);
               })
             }
           >
@@ -595,6 +618,62 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
               </select>
             </label>
           </div>
+          <fieldset className="seq-enhancer">
+            <h2>Video Enhancer</h2>
+            <p className="seq-subtle">
+              Applies to the entire sequence. Preview and export use the same adjustments.
+            </p>
+            <button
+              aria-pressed={enhancement.enabled}
+              onClick={() => updateEnhancement({ enabled: !enhancement.enabled })}
+            >
+              {enhancement.enabled ? "Enhancement on · Compare original" : "Enable enhancement"}
+            </button>
+            <div className="seq-actions">
+              <button onClick={() => updateEnhancement(ENHANCE_PRESETS.balanced)}>Balanced</button>
+              <button onClick={() => updateEnhancement(ENHANCE_PRESETS.lowLight)}>Low light</button>
+              <button onClick={() => updateEnhancement(ENHANCE_PRESETS.vivid)}>Vivid</button>
+            </div>
+            <fieldset disabled={!enhancement.enabled}>
+              <Numeric
+                label="Exposure (stops)"
+                value={enhancement.exposure}
+                min={-2}
+                max={2}
+                step={0.1}
+                onChange={(v) => updateEnhancement({ exposure: v })}
+              />
+              <Numeric
+                label="Contrast (%)"
+                value={enhancement.contrast * 100}
+                min={50}
+                max={150}
+                onChange={(v) => updateEnhancement({ contrast: v / 100 })}
+              />
+              <Numeric
+                label="Saturation (%)"
+                value={enhancement.saturation * 100}
+                min={0}
+                max={200}
+                onChange={(v) => updateEnhancement({ saturation: v / 100 })}
+              />
+              <Numeric
+                label="Sharpen (%)"
+                value={enhancement.sharpen * 100}
+                min={0}
+                max={100}
+                onChange={(v) => updateEnhancement({ sharpen: v / 100 })}
+              />
+            </fieldset>
+            <button onClick={() => updateEnhancement(DEFAULT_ENHANCEMENT)}>
+              Reset enhancement
+            </button>
+            <p className="seq-subtle">
+              Export: {outputSize.width}×{outputSize.height} · {sequence.fps} fps. Lower-resolution
+              media is upscaled; enhancement cannot reconstruct missing detail. 4K uses more memory
+              and rendering time.
+            </p>
+          </fieldset>
           {clip ? (
             <fieldset disabled={sequence.tracks.find((t) => t.id === clip.track)?.locked}>
               <h2>{assetOf(sequence, clip).name}</h2>

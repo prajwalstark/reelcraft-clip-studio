@@ -27,6 +27,21 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("sequence workspace", () => {
+  it("saves enhancement presets, supports compare/reset and selects UHD export", async () => {
+    render(<SequenceStudio />);
+    expect(screen.getByLabelText("Export resolution")).toHaveValue("2160");
+    fireEvent.click(screen.getByText("Balanced"));
+    expect(screen.getByLabelText("Contrast (%)")).toHaveValue(108);
+    expect(JSON.parse(localStorage.getItem("reelcraft-sequence-v1")!).enhancement.enabled).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByText("Enhancement on · Compare original"));
+    expect(screen.getByLabelText("Contrast (%)")).toBeDisabled();
+    fireEvent.click(screen.getByText("Enable enhancement"));
+    expect(screen.getByLabelText("Contrast (%)")).toHaveValue(108);
+    fireEvent.click(screen.getByText("Reset enhancement"));
+    expect(screen.getByLabelText("Contrast (%)")).toHaveValue(100);
+  });
   it("imports multiple files and supports append, undo, redo and track locks", async () => {
     const { container } = render(<SequenceStudio />);
     const input = container.querySelector("input[multiple]")!;

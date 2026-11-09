@@ -76,6 +76,50 @@ beforeEach(() => {
   vi.spyOn(MediaSession.prototype, "draw").mockResolvedValue();
 });
 describe("sequence export contract", () => {
+  it("encodes 4K at the requested dimensions and reports them", async () => {
+    const result = await exportSequence(
+      fixture(),
+      new Map([["a", new File(["x"], "a.mp4")]]),
+      2160,
+      new AbortController().signal,
+      () => {},
+    );
+    expect(mocks.video).toHaveBeenCalledWith(
+      "avc",
+      expect.objectContaining({ width: 3840, height: 2160, frameRate: 24 }),
+    );
+    expect(result).toMatchObject({ width: 3840, height: 2160, extension: "mp4" });
+  });
+  it("rejects unsupported UHD before audio mixing instead of downscaling", async () => {
+    mocks.video.mockResolvedValue(false);
+    await expect(
+      exportSequence(
+        fixture(),
+        new Map([["a", new File(["x"], "a.mp4")]]),
+        2160,
+        new AbortController().signal,
+        () => {},
+      ),
+    ).rejects.toThrow("3840×2160");
+    expect(MediaSession.prototype.audio).not.toHaveBeenCalled();
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+  it("requires a supported audio encoder when audible clips are present", async () => {
+    const s = fixture();
+    s.assets[0]!.hasAudio = true;
+    mocks.audio.mockResolvedValue(false);
+    await expect(
+      exportSequence(
+        s,
+        new Map([["a", new File(["x"], "a.mp4")]]),
+        2160,
+        new AbortController().signal,
+        () => {},
+      ),
+    ).rejects.toThrow("required audio");
+    expect(MediaSession.prototype.audio).not.toHaveBeenCalled();
+  });
+
   it("encodes every frame at exact timestamps without recording playback", async () => {
     const s = fixture();
     const result = await exportSequence(
