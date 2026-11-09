@@ -44,3 +44,22 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Sequence Studio (beta)
+
+Choose **Sequence Studio** in the workspace bar. It is a separate multitrack editor; the existing Shorts editor and its editable templates remain available. Sequence projects do not currently import Shorts project files or templates.
+
+1. Import one or more local videos, audio files, or images. Select a source to preview it. Waveforms contain 128 sampled decoded peaks, not invented decorative data.
+2. Drag media onto V1–V3 or A1–A3, or use the bin's append buttons. V3 is the top visual layer. Videos on video tracks retain their sound; placing the same source on an audio track adds another copy of that sound.
+3. Drag clips to move them between compatible tracks. Use the inspector for exact frame start/duration and source-in trimming, volume, fit, position, scale, opacity and fades. Split at the playhead, undo/redo, or ripple-delete a non-overlapping clip on its own track. Lock tracks to prevent clip edits; M mutes sound and H hides picture independently.
+4. Select a later clip and choose **Crossfade from previous**. This overlaps the two clips by up to half a second, fades the incoming picture over the outgoing picture and applies complementary linear audio gains. It rejects overlaps with a third clip. Moving or trimming a transition endpoint removes an invalid transition.
+5. Save a `.reelseq.json` project. Autosave retains the latest edit locally. Source files are not embedded or uploaded; after reloading/opening, relink each original file using its matching name, size and modification timestamp. Switching between workspaces retains the current sequence's file handles for this page session.
+6. Export 720p or 1080p at 24 or 30 fps, in landscape, portrait or square. Mediabunny decodes and composites each frame at its explicit timestamp. MP4/H.264/AAC is used when the browser supports those encoders, otherwise WebM/VP9/Opus. Files have the matching extension. Missing files, unsupported codecs and audio decode errors stop the export. Cancel releases decoder and encoder resources; per-operation timeouts prevent indefinite waits.
+
+### Current limits
+
+- Maximum 180-second sequence, 50 sources and 200 clips. Long sources can be trimmed into the sequence. Source metadata and waveforms are probed locally.
+- Audio is prepared before playback/export, mixed at 48 kHz stereo, and clamped to avoid out-of-range samples. Mono is duplicated; multichannel sources use their first two channels (no surround downmix). Preparation can take time and memory. Lower track gains when multiple loud sources overlap.
+- Preview can skip frames under load; export encodes every frame. Codec availability depends on the browser/device. This is a browser editor, not a full Premiere replacement.
+- No proxies, nested sequences, advanced color tools, keyframes, multicam, transcription, cloud rendering or sequence-template conversion in this milestone.
+- Before publishing, run a real-browser smoke test with video plus music: split/trim, crossfade, preview, export, cancel, reload/relink, and verify the exported file's sound and timing. The implementation environment could not launch Chromium because its socket creation was blocked; automated tests cover editing, mixing, component interactions and the encoder orchestration with mocked browser codecs.
