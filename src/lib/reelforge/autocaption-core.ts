@@ -106,19 +106,20 @@ export interface Window {
 }
 
 /**
- * Split audio into ≤ `maxSeconds` windows, moving each cut to the quietest 0.25 s stretch in
- * the last `searchSeconds` of the window so words are rarely cut in half.
+ * Split audio into ≤ `maxSeconds` windows. Each cut goes in the middle of the longest quiet
+ * stretch within the last `searchSeconds` of the window (later stretches win ties), so
+ * sentences are rarely split — Whisper tends to drop a sentence that is cut off at the end.
  */
 export function planWindows(
   samples: Float32Array,
   rate = ASR_RATE,
   maxSeconds = WINDOW_SECONDS,
-  searchSeconds = 4,
+  searchSeconds = 12,
 ): Window[] {
   const max = Math.floor(maxSeconds * rate);
   const search = Math.floor(Math.min(searchSeconds, maxSeconds / 2) * rate);
   const hop = Math.floor(0.05 * rate);
-  const frame = Math.floor(0.25 * rate);
+  const frame = Math.floor(0.2 * rate);
   const out: Window[] = [];
   let start = 0;
   while (start < samples.length) {
@@ -126,15 +127,32 @@ export function planWindows(
       out.push({ start, end: samples.length });
       break;
     }
-    let best = start + max;
-    let bestEnergy = Infinity;
+    const centers: number[] = [];
+    const energy: number[] = [];
     for (let c = start + max - search; c + frame <= start + max; c += hop) {
       let e = 0;
       for (let i = c; i < c + frame; i++) e += samples[i]! * samples[i]!;
-      if (e < bestEnergy) {
-        bestEnergy = e;
-        best = c + Math.floor(frame / 2);
+      centers.push(c + Math.floor(frame / 2));
+      energy.push(e / frame);
+    }
+    // "Quiet" is relative to the quietest frame, with a floor near digital silence.
+    const min = Math.min(...energy);
+    const quiet = Math.max(min * 4, 1e-6);
+    let best = centers.at(-1) ?? start + max;
+    let bestLen = 0;
+    for (let i = 0; i < energy.length;) {
+      if (energy[i]! > quiet) {
+        i++;
+        continue;
       }
+      let j = i;
+      while (j + 1 < energy.length && energy[j + 1]! <= quiet) j++;
+      const len = j - i + 1;
+      if (len >= bestLen) {
+        bestLen = len;
+        best = centers[Math.floor((i + j) / 2)]!;
+      }
+      i = j + 1;
     }
     out.push({ start, end: best });
     start = best;
@@ -183,7 +201,11 @@ export function chunksToWords(chunks: AsrChunk[], offset: number, windowSeconds:
         ? (nextStart as number)
         : Math.min(windowSeconds, s + 0.6);
     const start = Math.max(0, Math.min(s, windowSeconds));
-    const end = Math.max(start + 0.05, Math.min(e, windowSeconds));
+    // Whisper sometimes stretches a single word's end across the following silence; no word
+    // lasts that long, so cap it relative to its length (multi-word segments are left alone).
+    const single = !text.includes(" ");
+    const cap = single ? start + 0.35 + text.length * 0.1 : Infinity;
+    const end = Math.max(start + 0.05, Math.min(e, windowSeconds, cap));
     // Segment-level chunks (several words) are spread over their span by character count.
     const parts = text.split(" ");
     if (parts.length === 1) {

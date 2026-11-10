@@ -21,8 +21,18 @@ import { commit, getState } from "./store";
 import type { WorkerIn, WorkerOut } from "./whisper.worker";
 
 export const MODELS = {
-  fast: { id: "onnx-community/whisper-tiny_timestamped", label: "Fast", size: "≈ 40 MB" },
-  accurate: { id: "onnx-community/whisper-base_timestamped", label: "Accurate", size: "≈ 80 MB" },
+  fast: {
+    id: "onnx-community/whisper-tiny_timestamped",
+    label: "Fast",
+    size: "≈ 40 MB",
+    bytes: 44e6,
+  },
+  accurate: {
+    id: "onnx-community/whisper-base_timestamped",
+    label: "Accurate",
+    size: "≈ 80 MB",
+    bytes: 81e6,
+  },
 } as const;
 export type ModelKey = keyof typeof MODELS;
 
@@ -137,7 +147,7 @@ function call<T extends WorkerOut["type"]>(
   });
 }
 
-async function ensureModel(model: string, signal: AbortSignal) {
+async function ensureModel(model: string, expectedBytes: number, signal: AbortSignal) {
   if (worker && workerModel === model) return worker;
   worker ??= new Worker(new URL("./whisper.worker.ts", import.meta.url), { type: "module" });
   const files = new Map<string, [number, number]>();
@@ -145,12 +155,15 @@ async function ensureModel(model: string, signal: AbortSignal) {
   const ready = await call(worker, { type: "load", model }, "ready", signal, (m) => {
     if (m.type !== "download") return;
     files.set(m.file, [m.loaded, m.total]);
-    let a = 0;
-    let b = 0;
-    files.forEach(([l, t]) => ((a += l), (b += t)));
+    let got = 0;
+    let known = 0;
+    files.forEach(([l, t]) => ((got += l), (known += t)));
+    // Files report their size only once they start, so use the model's expected size until
+    // the reported total is larger; cached files finish instantly.
+    const total = Math.max(known, expectedBytes);
     set({
-      progress: b ? a / b : 0,
-      detail: `Downloading speech model · ${(a / 1e6).toFixed(0)} / ${(b / 1e6).toFixed(0)} MB (first time only)`,
+      progress: Math.min(1, got / total),
+      detail: `Downloading speech model · ${(got / 1e6).toFixed(0)} of ~${(total / 1e6).toFixed(0)} MB (first time only)`,
     });
   });
   workerModel = model;
@@ -257,7 +270,7 @@ export async function runAutoCaptions(opts: AutoCaptionOptions) {
   const signal = abort.signal;
   set({ status: "loading", progress: 0, detail: "Starting…", error: undefined, added: undefined });
   try {
-    const w = await ensureModel(MODELS[opts.model].id, signal);
+    const w = await ensureModel(MODELS[opts.model].id, MODELS[opts.model].bytes, signal);
     set({ status: "decoding", progress: 0, detail: "Reading audio…", device: workerDevice });
     const samples = await decodeRange(file, start, end, signal, (p) =>
       set({ progress: p, detail: `Reading audio · ${Math.round(p * 100)}%` }),

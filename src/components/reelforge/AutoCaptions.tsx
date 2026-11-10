@@ -25,10 +25,10 @@ const field =
 const label =
   "mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground";
 
-const PRESET_LABELS: Record<CuePreset, string> = {
-  punchy: "Punchy · 2–3 words",
-  standard: "Standard · one line",
-  sentences: "Sentences · two lines",
+const PRESET_LABELS: Record<CuePreset, [string, string]> = {
+  punchy: ["Punchy", "2–3 words at a time"],
+  standard: ["Standard", "about one line per caption"],
+  sentences: ["Sentences", "up to two lines"],
 };
 
 /** Settings survive tab switches and reloads (per browser, not part of the project). */
@@ -59,7 +59,7 @@ export function AutoCaptions({ clip }: { clip: Clip }) {
   const duration = useStore((s) => s.project.source?.duration ?? 0);
   const captions = useStore((s) => s.project.captions);
   const [scope, setScope] = usePref<"clip" | "source">("scope", "clip", ["clip", "source"]);
-  const [model, setModel] = usePref<ModelKey>("model", "fast", Object.keys(MODELS));
+  const [model, setModel] = usePref<ModelKey>("model", "accurate", Object.keys(MODELS));
   const [language, setLanguage] = usePref<string>(
     "language",
     "",
@@ -126,7 +126,7 @@ export function AutoCaptions({ clip }: { clip: Clip }) {
           >
             {(Object.keys(MODELS) as ModelKey[]).map((k) => (
               <option key={k} value={k}>
-                {MODELS[k].label} ({MODELS[k].size})
+                {MODELS[k].label}
               </option>
             ))}
           </select>
@@ -158,15 +158,20 @@ export function AutoCaptions({ clip }: { clip: Clip }) {
           >
             {(Object.keys(CUE_PRESETS) as CuePreset[]).map((k) => (
               <option key={k} value={k}>
-                {PRESET_LABELS[k]}
+                {PRESET_LABELS[k][0]}
               </option>
             ))}
           </select>
         </label>
       </div>
 
-      <p className="tc text-[11px] text-muted-foreground">
-        {fmtTC(start)} – {fmtTC(end)} · {Math.round(end - start)} s of audio
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <span className="tc">
+          {fmtTC(start)} – {fmtTC(end)} · {Math.round(end - start)} s of audio
+        </span>
+        <br />
+        {MODELS[model].label} model, {MODELS[model].size} downloaded once
+        {model === "fast" ? " — quicker, but less accurate" : ""} · {PRESET_LABELS[preset][1]}
       </p>
 
       {overlapping > 0 && (

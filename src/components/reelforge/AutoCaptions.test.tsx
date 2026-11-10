@@ -45,7 +45,7 @@ it("transcribes the selected clip's range by default with the chosen settings", 
   expect(run).toHaveBeenCalledWith({
     start: 4,
     end: 14,
-    model: "fast",
+    model: "accurate",
     language: "en",
     preset: "punchy",
     replace: false,

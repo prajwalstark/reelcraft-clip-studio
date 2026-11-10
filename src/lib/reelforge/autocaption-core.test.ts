@@ -97,6 +97,15 @@ describe("planWindows", () => {
     expect(first!.end / ASR_RATE).toBeLessThan(26.6);
   });
 
+  it("prefers the middle of a long pause over a brief dip near the limit", () => {
+    const x = sine(ASR_RATE, 34, 200);
+    x.fill(0, Math.round(18 * ASR_RATE), Math.round(22 * ASR_RATE)); // 4 s pause
+    x.fill(0, Math.round(26.9 * ASR_RATE), Math.round(27.1 * ASR_RATE)); // 0.2 s gap between words
+    const [first] = planWindows(x);
+    expect(first!.end / ASR_RATE).toBeGreaterThan(19.5);
+    expect(first!.end / ASR_RATE).toBeLessThan(20.5);
+  });
+
   it("returns a single window for short audio", () => {
     expect(planWindows(new Float32Array(ASR_RATE * 5))).toEqual([{ start: 0, end: ASR_RATE * 5 }]);
   });
@@ -125,6 +134,11 @@ describe("chunksToWords", () => {
     expect(words[0]).toMatchObject({ start: 11, end: 11.4 });
     expect(words[1]!.start).toBe(11.4);
     expect(words[1]!.end).toBeGreaterThan(11.4); // missing end is estimated
+  });
+
+  it("caps a word whose end Whisper stretched into the following silence", () => {
+    const [w] = chunksToWords([{ text: " screen.", timestamp: [17.7, 21] }], 0, 28);
+    expect(w!.end).toBeLessThan(19);
   });
 
   it("spreads a multi-word segment over its span", () => {
