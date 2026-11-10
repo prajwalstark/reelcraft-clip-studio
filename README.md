@@ -4,6 +4,8 @@
 
 **Auto-captions:** Captions → Auto-captions transcribes a clip or the whole video on-device with Whisper (nothing is uploaded) and turns it into editable, timed captions. See [FEATURE_PARITY.md](FEATURE_PARITY.md#auto-captions).
 
+**Word-by-word captions:** Captions → Word animation adds Karaoke, Highlight, Pop or Reveal, timed to the spoken words from Auto-captions. See [FEATURE_PARITY.md](FEATURE_PARITY.md#word-by-word-captions).
+
 **Editable templates:** Load a video and open **Templates** for five original styles inspired by the selected CapCut trends. Customize titles, subtitles, accent colors and motion; apply to one clip or a selection and undo changes. See [FEATURE_PARITY.md](FEATURE_PARITY.md#editable-template-gallery) for scope and inspiration links.
 
 **Editor tools update:** color adjustments, audio fades, clip speed, timed titles, timeline markers/snapping/zoom, responsive panels and configurable exports. See [FEATURE_PARITY.md](FEATURE_PARITY.md) for implemented features, shortcuts, timing rules and verification limits.

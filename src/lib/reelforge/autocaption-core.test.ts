@@ -195,6 +195,11 @@ describe("wordsToCaptions", () => {
       CUE_PRESETS.standard,
     );
     expect(c!.text).toBe("Wait, what?");
+    // punctuation folds into the previous word so timings align with the caption's words
+    expect(c!.words).toEqual([
+      { text: "Wait,", start: 0, end: 0.35 },
+      { text: "what?", start: 0.4, end: 0.8 },
+    ]);
   });
 });
 
