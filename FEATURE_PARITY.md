@@ -13,6 +13,7 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 | Speed | 0.5×, 1×, 1.5×, 2×; playback and export use the same speed; output duration and SRT timings adjust |
 | Titles | One timed text overlay per clip, position, size, color and background; suitable for titles/lower thirds |
 | Captions | Manual timed cues, SRT/VTT import, style controls, burn-in toggle, speed-adjusted clip-relative SRT download |
+| Auto-captions | On-device speech recognition (Whisper via transformers.js in a Web Worker, WebGPU or WebAssembly) for one clip or the whole video; word-timed cues grouped by a length preset; one undoable edit that can replace captions in the range |
 | Timeline | Horizontal zoom/scroll, trim handles, optional eight-pixel snapping to other clip boundaries and markers, named markers |
 | Keyboard | Space play/pause, I/O trim, M marker, Ctrl/Command+K split, arrows source time step, Shift+arrows one second, undo/redo |
 | Export | 720/1080 size presets, 24/30 fps targets, real-time browser recording, progress/cancel, ZIP with matching SRT |
@@ -31,11 +32,22 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 - New source/project operations clear edit history, preventing undo from restoring metadata for a different local File. Source changes cancel pending exports; completed downloads remain available.
 - Local videos are not uploaded or stored in project JSON. Re-select the same source after reloading.
 
+## Auto-captions
+
+Open **Captions → Auto-captions**, choose the range (this clip or the whole video, up to 60 minutes per run), the model (Accurate ≈ 80 MB, the default, or Fast ≈ 40 MB — quicker but noticeably less accurate), the spoken language (or auto-detect) and a caption length, then **Generate captions**.
+
+- Audio is decoded locally with Mediabunny, mixed to mono and resampled to 16 kHz. It is cut into windows of up to 28 seconds at the quietest nearby moment, and silent windows are skipped to avoid invented text.
+- Whisper runs in a Web Worker: WebGPU with fp16 weights when the GPU supports `shader-f16`, otherwise 8-bit weights on WebAssembly. Model weights download once from Hugging Face and the ONNX runtime from jsDelivr; both are cached by the browser. **The video and its audio are never uploaded.**
+- Word timestamps are grouped into cues by the length preset (Punchy, Standard or Sentences). Cues break at sentence ends and pauses, have a minimum on-screen time and never overlap. Times are source seconds like every other caption, so clip-relative SRT export, speed changes and burn-in work unchanged.
+- The result is one undoable edit. Captions already in the range are replaced unless you untick the option. Progress, ETA and Cancel are shown; canceling changes nothing. Switching the source mid-run discards the result.
+- Verified in headless Chromium (WebAssembly path) on a 31 s H.264/AAC test video with two spoken passages: the decoded 16 kHz audio matches ffmpeg's conversion (correlation 0.989, zero lag); Accurate transcribed both passages with cue times within ~0.3 s of speech onset in ≈ 26 s including model load; Fast took ≈ 18 s but misheard most of the second passage. The WebGPU path was not exercised (no GPU in the test environment).
+- Limits: automatic transcripts make mistakes (names, jargon, overlapping speakers, music), so review the text. CPU (WebAssembly) transcription is slower than real time on many devices; the first run also waits for the model download.
+
 ## Browser limitations and deferred features
 
 Canvas + WebAudio + MediaRecorder exports run in real time. Keep the tab visible. Resolution is fixed by the selected preset, while frame rate/bitrate are targets and may vary under device load. Format selection prefers supported H.264 MP4, then browser-selected MP4, then WebM; the UI reports the available choice. MP4 alone does not guarantee H.264/AAC compatibility. Pitch preservation depends on the browser.
 
-Not implemented: AI highlight selection, speech transcription, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes, LUT import, professional grading scopes, noise reduction, a native Filmcraft/WASM engine, deterministic frame-accurate/offline rendering, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
+Not implemented: AI highlight selection, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes, LUT import, professional grading scopes, noise reduction, a native Filmcraft/WASM engine, deterministic frame-accurate/offline rendering, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
 
 ## Validation
 

@@ -19,6 +19,7 @@ import {
 import { audioGain, speedOf, outputDuration } from '@/lib/reelforge/editing';
 import { ColorPanel, AudioPanel, SpeedControl, TitlesPanel, MarkersPanel, QualityControls } from './ToolPanels';
 import { TemplatesPanel } from "./TemplatesPanel";
+import { AutoCaptions } from "./AutoCaptions";
 import { Timeline } from './Timeline';
 import { pickVideo } from "./EmptyStage";
 
@@ -370,6 +371,7 @@ function CaptionsTab({ clip }: { clip: Clip }) {
   const setStyle = (p: Partial<typeof style>) => commit((pr) => ({ ...pr, captionStyle: { ...pr.captionStyle, ...p } }), "capstyle");
   return (
     <div className="space-y-3">
+      <AutoCaptions clip={clip} />
       <div className="flex flex-wrap gap-1">
         <Button
           size="sm"
