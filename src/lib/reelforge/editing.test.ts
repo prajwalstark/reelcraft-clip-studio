@@ -212,3 +212,32 @@ describe("4K export settings", () => {
     expect(settingsOf({ resolution: 1440 as 1080, fps: 30 }).resolution).toBe(1080);
   });
 });
+
+describe("look (grade) settings", () => {
+  const base = {
+    ...newProject(),
+    source: {
+      name: "s.mp4",
+      size: 1,
+      type: "video/mp4",
+      lastModified: 0,
+      duration: 10,
+      width: 640,
+      height: 360,
+    },
+  };
+  const clip = { id: "a", title: "A", start: 0, end: 5, framing: DEFAULT_FRAMING };
+  it("keeps valid grades, clamps intensity and drops malformed ones", () => {
+    const p = readProject({
+      ...base,
+      clips: [
+        { ...clip, grade: { lookId: "look1", intensity: 1.7 } },
+        { ...clip, id: "b", grade: { lookId: 42, intensity: 1 } },
+        { ...clip, id: "c", grade: { lookId: "", intensity: 1 } },
+      ],
+    });
+    expect(p.clips[0]!.grade).toEqual({ lookId: "look1", intensity: 1 });
+    expect(p.clips[1]!.grade).toBeUndefined();
+    expect(p.clips[2]!.grade).toBeUndefined();
+  });
+});

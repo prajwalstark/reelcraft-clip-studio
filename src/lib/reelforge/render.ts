@@ -1,6 +1,8 @@
 import { templateCaptionStyle, templateFrame } from "./templates";
 import { drawTemplateDecorations } from "./template-render";
-import { titleOf, videoFilter } from "./editing";
+import { gradeOf, titleOf, videoFilter } from "./editing";
+import { lookRenderer } from "./grading/gpu";
+import { getLook } from "./grading/library";
 // Browser-only frame compositor shared by preview and export.
 import { activeCaptions, computeLayout, type Caption, type CaptionStyle, type Clip, type Framing } from "./core";
 import { captionWords, layoutWords, popScale, wordPhases } from "./caption-words";
@@ -65,6 +67,12 @@ export function drawFrame(
     if (decoded) decoded.draw(ctx, l.dx, l.dy, l.dw, l.dh);
     else ctx.drawImage(video as HTMLVideoElement, l.dx, l.dy, l.dw, l.dh);
     ctx.restore();
+    // Imported look (LUT/CDL): graded on the GPU over the video area only — before template
+    // decorations, titles and captions, so text and overlays keep their exact colours.
+    const grade = clip ? gradeOf(clip) : null;
+    const look = grade ? getLook(grade.lookId) : null;
+    if (grade && look && grade.intensity > 0)
+      lookRenderer()?.apply(ctx, look, grade.intensity, l.dx, l.dy, l.dw, l.dh);
   }
   if (motion) drawTemplateDecorations(ctx, outW, outH, motion);
   if (clip) {

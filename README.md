@@ -4,6 +4,8 @@
 
 **Auto-captions:** Captions → Auto-captions transcribes a clip or the whole video on-device with Whisper (nothing is uploaded) and turns it into editable, timed captions. See [FEATURE_PARITY.md](FEATURE_PARITY.md#auto-captions).
 
+**Looks (LUT & CDL):** Color → Looks imports `.cube`, `.3dl` and ASC CDL files — e.g. exported from DaVinci Resolve (*Generate LUT*) or Premiere Pro (Lumetri → *Export .cube*) — with intensity, apply-to-all and a library kept in this browser. See [FEATURE_PARITY.md](FEATURE_PARITY.md#looks-luts-and-cdl-from-resolve-or-premiere).
+
 **Media survives a refresh:** both editors keep imported media in this browser (never uploaded), so refreshing restores your video and edits. The Shorts editor's **Video** menu can replace or remove the source; Sequence Studio's media bin has **Remove**. See [FEATURE_PARITY.md](FEATURE_PARITY.md#keeping-media-after-a-refresh).
 
 **Frame-exact export and 4K:** Export → Resolution now includes 4K (2160p). With WebCodecs, every frame is decoded and encoded directly — no dropped frames, pitch-preserving speed changes — with real-time capture as a fallback. See [FEATURE_PARITY.md](FEATURE_PARITY.md#frame-exact-export-and-4k).

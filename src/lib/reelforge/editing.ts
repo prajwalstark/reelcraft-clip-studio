@@ -1,5 +1,13 @@
 import { normalizeTemplate } from "./templates";
-import { ASPECTS, clipCaptions, toSRT, type Caption, type Clip, type Project } from "./core";
+import {
+  ASPECTS,
+  clipCaptions,
+  toSRT,
+  type Caption,
+  type Clip,
+  type GradeSettings,
+  type Project,
+} from "./core";
 
 export interface ColorSettings {
   enabled: boolean;
@@ -107,6 +115,12 @@ export function videoFilter(c: Clip, height: number) {
     ? `brightness(${s.brightness}) contrast(${s.contrast}) saturate(${s.saturation}) hue-rotate(${s.hue}deg) blur(${(s.blur * height) / 1080}px)`
     : "none";
 }
+/** Normalised look settings, or null when the clip has no look. */
+export function gradeOf(c: Clip): GradeSettings | null {
+  const g = c.grade;
+  if (!g || typeof g.lookId !== "string" || !g.lookId) return null;
+  return { lookId: g.lookId, intensity: bounded(g.intensity, 1, 0, 1) };
+}
 export function settingsOf(s?: ExportSettings): ExportSettings {
   const resolution = s?.resolution === 720 ? 720 : s?.resolution === 2160 ? 2160 : 1080;
   return { resolution, fps: s?.fps === 24 ? 24 : 30 };
@@ -198,11 +212,16 @@ export function readProject(value: unknown): Project {
     )
       throw new Error("Invalid clip or duplicate clip ID");
     ids.add(c.id);
-    const { template: rawTemplate, ...rest } = c;
+    const { template: rawTemplate, grade: rawGrade, ...rest } = c;
     const template = normalizeTemplate(rawTemplate);
+    const grade =
+      rawGrade && typeof rawGrade.lookId === "string" && rawGrade.lookId.length <= 100
+        ? gradeOf({ ...c, grade: rawGrade })
+        : null;
     return {
       ...rest,
       ...(template ? { template } : {}),
+      ...(grade ? { grade } : {}),
       speed: speedOf(c),
       color: colorOf(c),
       audio: audioOf(c),
