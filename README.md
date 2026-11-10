@@ -4,6 +4,8 @@
 
 **Auto-captions:** Captions → Auto-captions transcribes a clip or the whole video on-device with Whisper (nothing is uploaded) and turns it into editable, timed captions. See [FEATURE_PARITY.md](FEATURE_PARITY.md#auto-captions).
 
+**Media survives a refresh:** both editors keep imported media in this browser (never uploaded), so refreshing restores your video and edits. The Shorts editor's **Video** menu can replace or remove the source; Sequence Studio's media bin has **Remove**. See [FEATURE_PARITY.md](FEATURE_PARITY.md#keeping-media-after-a-refresh).
+
 **Frame-exact export and 4K:** Export → Resolution now includes 4K (2160p). With WebCodecs, every frame is decoded and encoded directly — no dropped frames, pitch-preserving speed changes — with real-time capture as a fallback. See [FEATURE_PARITY.md](FEATURE_PARITY.md#frame-exact-export-and-4k).
 
 **Word-by-word captions:** Captions → Word animation adds Karaoke, Highlight, Pop or Reveal, timed to the spoken words from Auto-captions. See [FEATURE_PARITY.md](FEATURE_PARITY.md#word-by-word-captions).
@@ -61,7 +63,7 @@ Choose **Sequence Studio** in the workspace bar. It is a separate multitrack edi
 2. Drag media onto V1–V3 or A1–A3, or use the bin's append buttons. V3 is the top visual layer. Videos on video tracks retain their sound; placing the same source on an audio track adds another copy of that sound.
 3. Drag clips to move them between compatible tracks. Use the inspector for exact frame start/duration and source-in trimming, volume, fit, position, scale, opacity and fades. Split at the playhead, undo/redo, or ripple-delete a non-overlapping clip on its own track. Lock tracks to prevent clip edits; M mutes sound and H hides picture independently.
 4. Select a later clip and choose **Crossfade from previous**. This overlaps the two clips by up to half a second, fades the incoming picture over the outgoing picture and applies complementary linear audio gains. It rejects overlaps with a third clip. Moving or trimming a transition endpoint removes an invalid transition.
-5. Save a `.reelseq.json` project. Autosave retains the latest edit locally. Source files are not embedded or uploaded; after reloading/opening, relink each original file using its matching name, size and modification timestamp. Switching between workspaces retains the current sequence's file handles for this page session.
+5. Save a `.reelseq.json` project. Autosave retains the latest edit locally, and imported media is kept in this browser (IndexedDB, never uploaded) so a refresh restores it; turn this off with "Keep media after refresh". Remove media from the bin with **Remove** (its timeline clips go too; Undo restores them). If a file wasn't kept (too large for browser storage, or the setting is off), relink each original file using its matching name, size and modification timestamp. Switching between workspaces retains the current sequence's file handles for this page session.
 6. Export 720p, 1080p or 2160p at 24 or 30 fps, in landscape, portrait or square. Mediabunny decodes and composites each frame at its explicit timestamp. MP4/H.264/AAC is used when the browser supports those encoders, otherwise WebM/VP9/Opus. Files have the matching extension. Missing files, unsupported codecs and audio decode errors stop the export. Cancel releases decoder and encoder resources; per-operation timeouts prevent indefinite waits.
 
 ### Current limits

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Film, FlaskConical, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { loadSource, useStore } from "@/lib/reelforge/store";
+import { loadSource, removeSource, useStore } from "@/lib/reelforge/store";
 import { generateDemoVideo } from "@/lib/reelforge/demo";
 
 const Stage3D = lazy(() => import("./Stage3D"));
@@ -31,6 +31,7 @@ export function EmptyStage({ relink }: { relink?: boolean }) {
   const loading = useStore((s) => s.rt.loading);
   const sourceError = useStore((s) => s.rt.sourceError);
   const source = useStore((s) => s.project.source);
+  const restoring = useStore((s) => s.rt.restoring);
   const par = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -79,22 +80,36 @@ export function EmptyStage({ relink }: { relink?: boolean }) {
 
       <div ref={par} className="relative z-10 flex max-w-md flex-col items-center text-center transition-transform duration-300 ease-out">
         <h1 className="font-display text-5xl leading-none tracking-tight md:text-6xl">
-          {relink ? "Relink your source" : <>Cut long video<br /><em className="text-primary">into shorts.</em></>}
+          {restoring ? "Restoring your video…" : relink ? "Relink your source" : <>Cut long video<br /><em className="text-primary">into shorts.</em></>}
         </h1>
         <p className="mt-4 text-sm text-muted-foreground">
-          {relink && source
-            ? `Your clips and captions were saved, but browsers can't keep local video files. Re-select "${source.name}" to continue.`
-            : "Drop a video. It stays on this device — nothing is uploaded."}
+          {restoring && source
+            ? `Loading "${source.name}" from this browser's storage.`
+            : relink && source
+              ? `Your clips and captions were saved, but "${source.name}" isn't stored in this browser — it may have been too large, or "Remember video after refresh" is off. Re-select the same file to continue, or start over with a different video.`
+              : "Drop a video. It stays on this device — nothing is uploaded."}
         </p>
         <div
           className={`glass mt-7 flex w-full flex-col items-center gap-3 rounded-2xl px-6 py-6 transition ${over ? "shadow-glow" : ""}`}
         >
-          <Button variant="glow" size="lg" disabled={loading} onClick={() => pickVideo((f) => void loadSource(f))}>
-            {loading ? <Loader2 className="animate-spin" /> : <Upload />}
+          <Button variant="glow" size="lg" disabled={loading || restoring} onClick={() => pickVideo((f) => void loadSource(f))}>
+            {loading || restoring ? <Loader2 className="animate-spin" /> : <Upload />}
             {relink ? "Select source file" : "Choose video"}
           </Button>
           <span className="text-xs text-muted-foreground">or drag & drop · MP4, MOV, WebM</span>
           {sourceError && <p role="alert" className="text-xs text-destructive">{sourceError}</p>}
+          {relink && !restoring && (
+            <button
+              className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              onClick={() =>
+                confirm(
+                  `Start over? The saved clips, captions and markers for "${source?.name}" will be cleared.`,
+                ) && removeSource()
+              }
+            >
+              Start over with a different video
+            </button>
+          )}
         </div>
         {!relink && (
           <button

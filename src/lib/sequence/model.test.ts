@@ -5,6 +5,7 @@ import {
   patchItem,
   splitItem,
   deleteItem,
+  removeAsset,
   crossfade,
   clipLevel,
   changeFps,
@@ -112,5 +113,35 @@ describe("sequence editing", () => {
     expect(clipLevel(s, s.items[0]!, 30)).toBe(1);
     s.tracks[0]!.hidden = true;
     expect(clipLevel(s, s.items[0]!, 30)).toBe(0);
+  });
+});
+
+describe("removeAsset", () => {
+  function twoSources() {
+    const s = pair();
+    s.assets = [...s.assets, { ...s.assets[0]!, id: "music", name: "song.mp3", kind: "audio" }];
+    return addItem(s, "music", "A1", 0);
+  }
+  it("removes the source and every clip that uses it, keeping the rest", () => {
+    const s = removeAsset(twoSources(), "source");
+    expect(s.assets.map((a) => a.id)).toEqual(["music"]);
+    expect(s.items.map((c) => c.assetId)).toEqual(["music"]);
+  });
+  it("drops crossfades that pointed at removed clips", () => {
+    let s = twoSources();
+    const second = s.items.filter((c) => c.assetId === "source")[1]!;
+    s = crossfade(s, second.id);
+    expect(s.items.some((c) => c.transition)).toBe(true);
+    s = removeAsset(s, "source");
+    expect(s.items.some((c) => c.transition)).toBe(false);
+  });
+  it("refuses to touch clips on a locked track", () => {
+    const s = twoSources();
+    s.tracks = s.tracks.map((t) => (t.id === "V1" ? { ...t, locked: true } : t));
+    expect(() => removeAsset(s, "source")).toThrow(/V1 is locked/);
+  });
+  it("is a no-op for an unknown source", () => {
+    const s = twoSources();
+    expect(removeAsset(s, "nope")).toBe(s);
   });
 });

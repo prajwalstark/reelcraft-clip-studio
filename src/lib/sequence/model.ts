@@ -199,6 +199,21 @@ export function deleteItem(s: Sequence, itemId: string, ripple = false): Sequenc
       ),
   });
 }
+/**
+ * Remove a source from the media bin together with every timeline clip that uses it.
+ * Crossfades that pointed at a removed clip are dropped. Refuses when one of those clips sits
+ * on a locked track, so locked work is never changed behind the user's back.
+ */
+export function removeAsset(s: Sequence, assetId: string): Sequence {
+  if (!s.assets.some((a) => a.id === assetId)) return s;
+  const using = s.items.filter((c) => c.assetId === assetId);
+  for (const c of using) assertEditable(s, c.track);
+  return cleanTransitions({
+    ...s,
+    assets: s.assets.filter((a) => a.id !== assetId),
+    items: s.items.filter((c) => c.assetId !== assetId),
+  });
+}
 export function splitItem(s: Sequence, itemId: string, frame: number): Sequence {
   if (s.items.length >= 200) throw new Error("Limit: 200 clips per sequence.");
   const c = s.items.find((x) => x.id === itemId);

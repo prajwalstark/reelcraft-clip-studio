@@ -7,6 +7,7 @@ import {
   type Clip, type Project, type SourceMeta,
 } from "./core";
 import { downloadBlob, exportClip, type ExportFormat } from "./exporter";
+import { forgetMedia, loadMedia, pruneMedia, saveMedia, setRememberMedia } from "@/lib/media-vault";
 import { exportClipFast, fastExportSupported, FastExportUnavailable } from "./fast-export";
 
 export type Tab = "templates" | "clip" | "frame" | "captions" | "export" | "color" | "audio" | "titles" | "markers";
@@ -43,6 +44,14 @@ interface Runtime {
   stepFps: number;
   jobs: Job[];
   hydrated: boolean;
+  /** True while a saved copy of the source is being restored after a refresh. */
+  restoring: boolean;
+  /** Whether the current source video is kept in this browser for the next refresh. */
+  keep: KeepState;
+}
+export interface KeepState {
+  status: "idle" | "saving" | "saved" | "failed" | "off";
+  message?: string;
 }
 interface State { project: Project; past: Project[]; future: Project[]; rt: Runtime }
 
@@ -53,6 +62,7 @@ let state: State = {
   rt: {
     file: null, url: null, sourceError: null, loading: false, selected: [], activeId: null,
     activeCaptionId: null, time: 0, playing: false, tab: "clip", safeZone: true, timelineZoom: 1, snapping: true, stepFps: 30, jobs: [], hydrated: false,
+    restoring: false, keep: { status: "idle" },
   },
 };
 const subs = new Set<() => void>();
@@ -125,11 +135,22 @@ function replaceProject(project: Project) {
 // ---------- persistence ----------
 const LS = "reelforge:project:v1";
 let saveT = 0;
+function writeNow() {
+  clearTimeout(saveT);
+  saveT = 0;
+  try {
+    localStorage.setItem(LS, JSON.stringify(state.project));
+  } catch {
+    /* quota */
+  }
+}
 function save() {
   clearTimeout(saveT);
-  saveT = window.setTimeout(() => {
-    try { localStorage.setItem(LS, JSON.stringify(state.project)); } catch { /* quota */ }
-  }, 300);
+  saveT = window.setTimeout(writeNow, 300);
+}
+/** Write a pending autosave right away (before the page is hidden/closed, or after destructive actions). */
+export function flushSave() {
+  if (saveT) writeNow();
 }
 export function hydrate() {
   if (state.rt.hydrated) return;
@@ -139,13 +160,79 @@ export function hydrate() {
     if (p) state = { ...state, project: readProject(p) };
   } catch { /* ignore */ }
   state = { ...state, rt: { ...state.rt, hydrated: true } };
+  // Don't lose the last edits (or a just-removed video) if the tab is refreshed or closed
+  // within the autosave delay.
+  window.addEventListener("pagehide", flushSave);
+  document.addEventListener(
+    "visibilitychange",
+    () => document.visibilityState === "hidden" && flushSave(),
+  );
   fixSelection();
   emit();
 }
 export function newProjectAction() {
   cancelAll();
   releaseSource();
+  void forgetMedia(VAULT_KEY);
   replaceProject(newProject());
+  writeNow();
+}
+
+/**
+ * Remove the source video and everything cut from it (clips, captions, markers), keeping
+ * project-wide preferences such as caption style and export settings. Also deletes the copy
+ * kept in this browser.
+ */
+export function removeSource() {
+  cancelAll();
+  releaseSource();
+  void forgetMedia(VAULT_KEY);
+  const p = state.project;
+  replaceProject({
+    ...newProject(),
+    captionStyle: p.captionStyle,
+    segmentSeconds: p.segmentSeconds,
+    ...(p.exportSettings ? { exportSettings: p.exportSettings } : {}),
+  });
+  setRt({ keep: { status: "idle" }, sourceError: null, activeId: null, selected: [] });
+  writeNow();
+}
+
+/** After a refresh: bring back the source video from this browser's storage, if it was kept. */
+export async function restoreSource() {
+  const src = state.project.source;
+  if (!src || state.rt.url || state.rt.restoring) return;
+  setRt({ restoring: true });
+  try {
+    const file = await loadMedia(VAULT_KEY, src);
+    // The project may have changed while we waited (e.g. the user picked a file).
+    if (file && state.project.source === src && !state.rt.url)
+      await loadSource(file, { fromVault: true });
+  } finally {
+    setRt({ restoring: false });
+  }
+}
+
+/** Turn "remember video after refresh" on or off for this browser. */
+export function setKeepMedia(on: boolean) {
+  setRememberMedia(on);
+  if (!on) {
+    // One setting for the whole app: turning it off deletes every kept copy.
+    void pruneMedia("", new Set());
+    setRt({ keep: { status: "off", message: "Not kept: remembering media is turned off." } });
+  } else if (state.rt.file) void keepSource(state.rt.file);
+  else setRt({ keep: { status: "idle" } });
+}
+
+async function keepSource(file: File) {
+  setRt({ keep: { status: "saving" } });
+  const r = await saveMedia(VAULT_KEY, file);
+  if (state.rt.file !== file) return; // replaced meanwhile
+  setRt({
+    keep: r.ok
+      ? { status: "saved" }
+      : { status: r.reason === "off" ? "off" : "failed", message: r.message },
+  });
 }
 export function exportProjectJSON() {
   const p = state.project;
@@ -158,9 +245,11 @@ export async function importProjectJSON(file: File) {
   const matches = !!f && !!p.source && f.name === p.source.name && f.size === p.source.size;
   if (!matches) releaseSource();
   replaceProject(p);
+  if (!matches) void restoreSource();
 }
 
-// ---------- source media (stays local: object URL only, never uploaded) ----------
+// ---------- source media (stays local: object URL + optional copy in this browser, never uploaded) ----------
+const VAULT_KEY = "shorts:source";
 function releaseSource() {
   media.video?.pause();
   if (state.rt.url) URL.revokeObjectURL(state.rt.url);
@@ -187,7 +276,7 @@ function probe(url: string): Promise<{ duration: number; width: number; height: 
   });
 }
 
-export async function loadSource(file: File) {
+export async function loadSource(file: File, opts: { fromVault?: boolean } = {}) {
   if (!file.type.startsWith("video/") && !VIDEO_EXT.test(file.name)) {
     setRt({ sourceError: `"${file.name}" is not a video file.` });
     return;
@@ -201,6 +290,9 @@ export async function loadSource(file: File) {
     const relink = !!prev && prev.name === file.name && prev.size === file.size && state.project.clips.length > 0;
     if (state.rt.url) URL.revokeObjectURL(state.rt.url);
     setRt({ file, url, loading: false, time: 0, playing: false });
+    // Keep a local copy so a refresh doesn't lose the video (never uploaded).
+    if (opts.fromVault) setRt({ keep: { status: "saved" } });
+    else void keepSource(file);
     const meta: SourceMeta = {
       name: file.name, size: file.size, type: file.type || "video", lastModified: file.lastModified, ...m,
     };
