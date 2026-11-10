@@ -60,7 +60,7 @@ Verified in Chromium: on the 31 s test video, Accurate auto-captions stored timi
 
 ## Frame-exact export and 4K
 
-**Export → Resolution** offers 720p, 1080p and **4K (2160p)**: 2160×3840 for 9:16, 2160×2160 for 1:1 and 3840×2160 for 16:9, at 32 Mbps. 4K needs a WebCodecs encoder that supports the size; if there isn't one the job stops with a message — it never falls back to real-time capture or a smaller file. 4K files are about 4× larger than 1080p and are held in memory until downloaded.
+**Export → Resolution** offers 720p, 1080p and **4K (2160p)**: 2160×3840 for 9:16, 2160×2160 for 1:1 and 3840×2160 for 16:9, at 32 Mbps. 4K needs a WebCodecs encoder that supports the size; if there isn't one the job stops with a message — it never falls back to real-time capture or a smaller file. 4K files are about 4× larger than 1080p and are held in memory until downloaded. 4K only adds detail when the source has it: a 9:16 crop of 1080p footage is about 600 px wide, so exporting it at 4K is an upscale.
 
 Verified in headless Chromium on a CPU-only 4-core sandbox (no GPU, no hardware video, no AAC encoder, so WebM VP9 + Opus was chosen):
 
@@ -71,7 +71,7 @@ Verified in headless Chromium on a CPU-only 4-core sandbox (no GPU, no hardware 
 | 2× speed | 23 s | 300 frames, 10.0 s, tone still **440 Hz** (not 880) |
 | 0.5× speed | 67 s | 1,200 frames, 40.0 s, tone still **440 Hz** (not 220) |
 | 30 s speech video, 1080×1920 | 50 s | 900 frames, 30.0 s |
-| 20 s test pattern, 2160×3840 (4K) | pending | verification run in progress |
+| 20 s test pattern, 2160×3840 (4K) | 114 s | 600 / 600 frames at 30 fps, 20.0 s, 40.9 MB, audio intact |
 
 Profiling showed decode ≈ 11 ms/frame, encode ≈ 22 ms/frame and compositing 0.07 ms/frame; in this sandbox, moving each decoded frame onto the 2D canvas is a CPU copy (software rendering), which dominates. On machines with a GPU canvas and hardware codecs those costs are much lower, but that was not measured here.
 
