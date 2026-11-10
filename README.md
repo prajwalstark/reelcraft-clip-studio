@@ -4,6 +4,8 @@
 
 **Auto-captions:** Captions → Auto-captions transcribes a clip or the whole video on-device with Whisper (nothing is uploaded) and turns it into editable, timed captions. See [FEATURE_PARITY.md](FEATURE_PARITY.md#auto-captions).
 
+**Frame-exact export and 4K:** Export → Resolution now includes 4K (2160p). With WebCodecs, every frame is decoded and encoded directly — no dropped frames, pitch-preserving speed changes — with real-time capture as a fallback. See [FEATURE_PARITY.md](FEATURE_PARITY.md#frame-exact-export-and-4k).
+
 **Word-by-word captions:** Captions → Word animation adds Karaoke, Highlight, Pop or Reveal, timed to the spoken words from Auto-captions. See [FEATURE_PARITY.md](FEATURE_PARITY.md#word-by-word-captions).
 
 **Editable templates:** Load a video and open **Templates** for five original styles inspired by the selected CapCut trends. Customize titles, subtitles, accent colors and motion; apply to one clip or a selection and undo changes. See [FEATURE_PARITY.md](FEATURE_PARITY.md#editable-template-gallery) for scope and inspiration links.

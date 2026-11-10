@@ -17,7 +17,7 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 | Word-by-word captions | Karaoke, Highlight, Pop and Reveal animations with an accent colour; uses spoken word timing from auto-captions and length-weighted timing for other captions; identical in preview and export |
 | Timeline | Horizontal zoom/scroll, trim handles, optional eight-pixel snapping to other clip boundaries and markers, named markers |
 | Keyboard | Space play/pause, I/O trim, M marker, Ctrl/Command+K split, arrows source time step, Shift+arrows one second, undo/redo |
-| Export | 720/1080 size presets, 24/30 fps targets, real-time browser recording, progress/cancel, ZIP with matching SRT |
+| Export | 720p / 1080p / 4K (2160p) presets at 24/30 fps; frame-exact WebCodecs encoding (MP4 H.264+AAC or WebM VP9+Opus) with pitch-preserving speed changes, real-time recording as a fallback; progress/cancel, ZIP with matching SRT |
 | Native templates | Five original single-clip styles, animated titles/subtitles, motion/tempo/accent controls, optional per-clip caption styling, selected-clip application and undo |
 | Projects | Existing v1 JSON compatibility, autosave/relink, project import/export, undo/redo for edits |
 | Export isolation | Each queued job captures its source File, clip settings, captions/style, quality and SRT; later edits cannot change it |
@@ -58,11 +58,28 @@ Auto-captions store each word's spoken time alongside the caption. Correcting a 
 
 Verified in Chromium: on the 31 s test video, Accurate auto-captions stored timings for every word; preview screenshots of all five modes and a real 1080×1920 export with Highlight showed the pill on the spoken word at 4.65 s ("are"), 5.40 s ("one") and 12.20 s ("and").
 
+## Frame-exact export and 4K
+
+**Export → Resolution** offers 720p, 1080p and **4K (2160p)**: 2160×3840 for 9:16, 2160×2160 for 1:1 and 3840×2160 for 16:9, at 32 Mbps. 4K needs a WebCodecs encoder that supports the size; if there isn't one the job stops with a message — it never falls back to real-time capture or a smaller file. 4K files are about 4× larger than 1080p and are held in memory until downloaded.
+
+Verified in headless Chromium on a CPU-only 4-core sandbox (no GPU, no hardware video, no AAC encoder, so WebM VP9 + Opus was chosen):
+
+| Export | Wall clock | Output |
+| --- | --- | --- |
+| 20 s test pattern, 1080×1920, frame-exact path | 35 s | 600 / 600 frames at 30 fps, 20.0 s, 440 Hz tone intact |
+| Same, original real-time path (WebCodecs hidden) | 21 s | **216 / 600 frames** (≈ 11 fps) — dropped 64% of frames |
+| 2× speed | 23 s | 300 frames, 10.0 s, tone still **440 Hz** (not 880) |
+| 0.5× speed | 67 s | 1,200 frames, 40.0 s, tone still **440 Hz** (not 220) |
+| 30 s speech video, 1080×1920 | 50 s | 900 frames, 30.0 s |
+| 20 s test pattern, 2160×3840 (4K) | pending | verification run in progress |
+
+Profiling showed decode ≈ 11 ms/frame, encode ≈ 22 ms/frame and compositing 0.07 ms/frame; in this sandbox, moving each decoded frame onto the 2D canvas is a CPU copy (software rendering), which dominates. On machines with a GPU canvas and hardware codecs those costs are much lower, but that was not measured here.
+
 ## Browser limitations and deferred features
 
-Canvas + WebAudio + MediaRecorder exports run in real time. Keep the tab visible. Resolution is fixed by the selected preset, while frame rate/bitrate are targets and may vary under device load. Format selection prefers supported H.264 MP4, then browser-selected MP4, then WebM; the UI reports the available choice. MP4 alone does not guarantee H.264/AAC compatibility. Pitch preservation depends on the browser.
+**Export paths.** Where WebCodecs is available (Chrome, Edge, recent Safari and Firefox), exports are frame-exact: each output frame is decoded at its exact source timestamp, composited with the same code as the preview and encoded — the clip is never played, so no frames are dropped. MP4 (H.264 + AAC) is used when the browser can encode both, otherwise WebM (VP9 + Opus); the job shows which. Speed changes are rendered offline with a pitch-preserving time-stretch (WSOLA). How fast this runs depends on the device: with hardware video decode/encode it is typically faster than real time; on CPU-only machines it can take longer than the clip, but the result is still complete. If WebCodecs can't decode the source or encode the size at 720p/1080p, the export falls back to the original real-time capture: canvas + WebAudio + MediaRecorder exports run in real time. Keep the tab visible. Resolution is fixed by the selected preset, while frame rate/bitrate are targets and may vary under device load. Format selection prefers supported H.264 MP4, then browser-selected MP4, then WebM; the UI reports the available choice. MP4 alone does not guarantee H.264/AAC compatibility. Pitch preservation depends on the browser.
 
-Not implemented: AI highlight selection, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes, LUT import, professional grading scopes, noise reduction, a native Filmcraft/WASM engine, deterministic frame-accurate/offline rendering, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
+Not implemented: AI highlight selection, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes, LUT import, professional grading scopes, noise reduction, a native Filmcraft/WASM engine, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
 
 ## Validation
 
