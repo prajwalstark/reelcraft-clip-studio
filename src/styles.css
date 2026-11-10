@@ -121,3 +121,83 @@
   background: repeating-linear-gradient(135deg, oklch(0.82 0.12 212 / 0.16) 0 6px, transparent 6px 12px);
   border: 1px dashed oklch(0.82 0.12 212 / 0.55);
 }
+
+/* ───────────────────────── Landing (cinematic) ───────────────────────── */
+/* The editor locks body scroll; the landing page needs native document scroll for Lenis + ScrollTrigger. */
+body:has([data-landing]) { overflow: visible; overflow-x: clip; }
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+.lenis.lenis-stopped { overflow: hidden; }
+
+:root {
+  --ink: #040406;
+  --charcoal: #0d0e12;
+  --graphite: #17181d;
+  --silver: #c4c9d3;
+  --volt: oklch(0.9 0.21 128);
+  --ice: oklch(0.82 0.12 212);
+  --ease-cine: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@utility text-chrome {
+  background: linear-gradient(180deg, #ffffff 0%, #e4e7ec 30%, #9aa1ad 62%, #e9ecf1 78%, #747b88 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@utility text-outline {
+  color: transparent;
+  -webkit-text-stroke: 1px oklch(1 0 0 / 0.28);
+}
+@utility display {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.86;
+}
+@utility editorial {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+@utility hud {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+@utility glass-panel {
+  background: linear-gradient(140deg, oklch(1 0 0 / 0.09), oklch(1 0 0 / 0.025) 45%, oklch(1 0 0 / 0.05));
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid oklch(1 0 0 / 0.1);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.14), 0 30px 80px -30px oklch(0 0 0 / 0.8);
+}
+
+[data-landing] { background: var(--ink); color: #f4f5f7; }
+[data-landing] .split-char { display: inline-block; will-change: transform, opacity; transform-style: preserve-3d; }
+[data-landing] .line-mask { display: block; overflow: hidden; padding-bottom: 0.06em; margin-bottom: -0.06em; }
+
+@media (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  [data-landing][data-cursor-ready] , [data-landing][data-cursor-ready] a, [data-landing][data-cursor-ready] button { cursor: none; }
+}
+
+@keyframes rec-blink { 0%, 55% { opacity: 1 } 56%, 100% { opacity: 0.15 } }
+@keyframes scroll-cue { 0% { transform: scaleY(0); transform-origin: top } 45% { transform: scaleY(1); transform-origin: top } 55% { transform: scaleY(1); transform-origin: bottom } 100% { transform: scaleY(0); transform-origin: bottom } }
+@keyframes caret { 50% { opacity: 0 } }
+@keyframes spin-slow { to { transform: rotate(360deg) } }
+@keyframes slice-in { from { transform: scaleY(0) } to { transform: scaleY(1) } }
+@keyframes trim-l { 0%, 100% { left: 8% } 50% { left: 26% } }
+@keyframes trim-r { 0%, 100% { right: 10% } 50% { right: 30% } }
+@keyframes pan-crop { 0%, 100% { left: 14% } 50% { left: 58% } }
+@keyframes drop-file { 0% { transform: translateY(-120%) rotate(-8deg); opacity: 0 } 30% { opacity: 1 } 60%, 100% { transform: translateY(0) rotate(0); opacity: 1 } }
+@keyframes ring-fill { from { stroke-dashoffset: 302 } to { stroke-dashoffset: 0 } }
+.anim-rec { animation: rec-blink 1.2s steps(1) infinite; }
+.anim-scroll-cue { animation: scroll-cue 2.2s var(--ease-cine) infinite; }
+.anim-caret { animation: caret 1s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .anim-rec, .anim-scroll-cue, .anim-caret, [data-loop] { animation: none !important; }
+}
