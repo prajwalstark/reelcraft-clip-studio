@@ -33,7 +33,7 @@ export interface Marker {
   name: string;
 }
 export interface ExportSettings {
-  resolution: 720 | 1080;
+  resolution: 720 | 1080 | 2160;
   fps: 24 | 30;
 }
 export const DEFAULT_COLOR: ColorSettings = {
@@ -108,7 +108,8 @@ export function videoFilter(c: Clip, height: number) {
     : "none";
 }
 export function settingsOf(s?: ExportSettings): ExportSettings {
-  return { resolution: s?.resolution === 720 ? 720 : 1080, fps: s?.fps === 24 ? 24 : 30 };
+  const resolution = s?.resolution === 720 ? 720 : s?.resolution === 2160 ? 2160 : 1080;
+  return { resolution, fps: s?.fps === 24 ? 24 : 30 };
 }
 export function outputSize(c: Clip, settings?: ExportSettings) {
   const s = settingsOf(settings),
@@ -118,7 +119,7 @@ export function outputSize(c: Clip, settings?: ExportSettings) {
     w: Math.round(a.w * ratio),
     h: Math.round(a.h * ratio),
     fps: s.fps,
-    bitrate: s.resolution === 720 ? 4_000_000 : 8_000_000,
+    bitrate: s.resolution === 720 ? 4_000_000 : s.resolution === 2160 ? 32_000_000 : 8_000_000,
   };
 }
 export function clipSRT(captions: Caption[], c: Clip) {

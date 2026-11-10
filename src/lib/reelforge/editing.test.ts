@@ -8,6 +8,7 @@ import {
   exportSnapshot,
   outputDuration,
   outputSize,
+  settingsOf,
   readProject,
   snapTime,
   timelineTime,
@@ -189,5 +190,25 @@ describe("word-by-word caption data", () => {
     const p = readProject({ ...base, captionStyle: { ...legacyStyle, animation: "spin" } });
     expect(p.captionStyle.animation).toBe("none");
     expect(p.captionStyle.accent).toBe("#c8ff3d");
+  });
+});
+
+describe("4K export settings", () => {
+  const clip = (aspect: "9:16" | "1:1" | "16:9"): Clip => ({
+    id: "c",
+    title: "c",
+    start: 0,
+    end: 1,
+    framing: { ...DEFAULT_FRAMING, aspect },
+  });
+  it("sizes 2160p outputs for every aspect at a 4K bitrate", () => {
+    const s = { resolution: 2160, fps: 30 } as const;
+    expect(outputSize(clip("9:16"), s)).toMatchObject({ w: 2160, h: 3840, bitrate: 32_000_000 });
+    expect(outputSize(clip("1:1"), s)).toMatchObject({ w: 2160, h: 2160 });
+    expect(outputSize(clip("16:9"), s)).toMatchObject({ w: 3840, h: 2160 });
+  });
+  it("keeps 2160 through settingsOf and rejects unknown resolutions", () => {
+    expect(settingsOf({ resolution: 2160, fps: 24 })).toEqual({ resolution: 2160, fps: 24 });
+    expect(settingsOf({ resolution: 1440 as 1080, fps: 30 }).resolution).toBe(1080);
   });
 });

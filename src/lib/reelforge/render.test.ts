@@ -115,3 +115,28 @@ it("picks readable text on the highlight pill", async () => {
   expect(contrastText("#c8ff3d")).toBe("#0b0b0d");
   expect(contrastText("#1d4ed8")).toBe("#ffffff");
 });
+
+it("lets decoded frames draw themselves (rotation-aware) into the layout rectangle", () => {
+  const ctx = {
+    filter: "none",
+    fillRect: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    drawImage: vi.fn(),
+    measureText: () => ({ width: 10 }),
+  } as unknown as CanvasRenderingContext2D;
+  const draw = vi.fn();
+  // A portrait phone frame (display 1080×1920 after rotation) filling a 9:16 output.
+  drawFrame(
+    ctx,
+    { width: 1080, height: 1920, draw },
+    540,
+    960,
+    DEFAULT_FRAMING,
+    null,
+    DEFAULT_CAPTION_STYLE,
+    0,
+  );
+  expect(draw).toHaveBeenCalledWith(ctx, 0, 0, 540, 960);
+  expect(ctx.drawImage).not.toHaveBeenCalled();
+});

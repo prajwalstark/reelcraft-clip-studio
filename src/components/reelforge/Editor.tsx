@@ -11,6 +11,7 @@ import {
 } from "@/lib/reelforge/core";
 import { drawFrame } from "@/lib/reelforge/render";
 import { downloadBlob, pickFormat } from "@/lib/reelforge/exporter";
+import { fastExportSupported } from "@/lib/reelforge/fast-export";
 import {
   activeClip, addMarker, cancelAll, cancelJob, commit, downloadClipSRT, downloadZip, enqueue, exportProjectJSON,
   getState, importProjectJSON, loadSource, media, newProjectAction, redo, removeJob, seek, setRt,
@@ -472,12 +473,20 @@ function ExportTab({ clip }: { clip: Clip }) {
   const jobs = useStore((s) => s.rt.jobs);
   const clips = useStore((s) => s.project.clips);
   const [fmt, setFmt] = useState<string>("");
-  useEffect(() => setFmt(pickFormat()?.label ?? "Not supported in this browser"), []);
+  useEffect(
+    () =>
+      setFmt(
+        fastExportSupported()
+          ? "Frame-exact export with WebCodecs: every frame is decoded and encoded without playing the clip, so none are dropped. MP4 (H.264 + AAC) where the browser can encode it, otherwise WebM (VP9 + Opus). Usually faster than real time on devices with hardware video support; slower machines take longer."
+          : `Real-time export (${pickFormat()?.label ?? "not supported in this browser"}): this browser lacks WebCodecs, so the clip is played and recorded; keep this tab visible. 4K needs WebCodecs.`,
+      ),
+    [],
+  );
   const done = jobs.filter((j) => j.status === "done").length;
   return (
     <div className="space-y-3">
       <QualityControls clip={clip} />
-      <div className="text-[11px] text-muted-foreground">Output: {fmt}. Export renders in real time inside your browser; keep this tab visible. Nothing is uploaded.</div>
+      <div className="text-[11px] text-muted-foreground">{fmt} Nothing is uploaded.</div>
       <div className="flex flex-wrap gap-1">
         <Button size="sm" onClick={() => enqueue([clip.id])}><Film className="h-3.5 w-3.5" />Export this clip</Button>
         <Button size="sm" variant="secondary" onClick={() => enqueue(clips.map((c) => c.id))}>Export all ({clips.length})</Button>
@@ -504,7 +513,11 @@ function ExportTab({ clip }: { clip: Clip }) {
             <div className="mt-1 h-1 overflow-hidden rounded bg-track">
               <div className={`h-full ${j.status === "error" ? "bg-destructive" : "bg-primary"}`} style={{ width: `${j.progress * 100}%` }} />
             </div>
-            {j.meta && <div className="mt-1 text-[10px] tc text-muted-foreground">{j.meta}</div>}
+            {(j.meta || j.path) && (
+              <div className="mt-1 text-[10px] tc text-muted-foreground">
+                {[j.meta, j.format?.label, j.path === "fast" ? "fast export" : j.path === "realtime" ? "real-time fallback" : null].filter(Boolean).join(" · ")}
+              </div>
+            )}
             {j.error && <div className="mt-1 text-[11px] text-destructive">{j.error}</div>}
           </div>
         ))}
