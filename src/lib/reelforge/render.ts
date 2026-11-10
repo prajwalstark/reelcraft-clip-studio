@@ -23,9 +23,26 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string
   return out;
 }
 
+/**
+ * The live <video> element (preview / real-time export), or a decoded frame (offline export)
+ * that draws itself into a destination rectangle — handling its own rotation/flip — with
+ * `width`/`height` in display orientation.
+ */
+export type FrameSource =
+  | HTMLVideoElement
+  | {
+      width: number;
+      height: number;
+      draw(ctx: CanvasRenderingContext2D, dx: number, dy: number, dw: number, dh: number): void;
+    };
+
+type DecodedFrame = Exclude<FrameSource, HTMLVideoElement>;
+const isDecodedFrame = (v: FrameSource): v is DecodedFrame =>
+  typeof (v as Partial<DecodedFrame>).draw === "function";
+
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
+  video: FrameSource,
   outW: number,
   outH: number,
   framing: Framing,
@@ -38,11 +55,15 @@ export function drawFrame(
   style = templateCaptionStyle(clip, style);
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, outW, outH);
-  if (video.videoWidth) {
-    const l = computeLayout(video.videoWidth, video.videoHeight, outW, outH, motion ? { ...framing, zoom: framing.zoom * motion.zoom } : framing);
+  const decoded = isDecodedFrame(video) ? video : null;
+  const iw = decoded ? decoded.width : (video as HTMLVideoElement).videoWidth;
+  const ih = decoded ? decoded.height : (video as HTMLVideoElement).videoHeight;
+  if (iw) {
+    const l = computeLayout(iw, ih, outW, outH, motion ? { ...framing, zoom: framing.zoom * motion.zoom } : framing);
     ctx.save();
     ctx.filter = clip ? videoFilter(clip, outH) : "none";
-    ctx.drawImage(video, l.dx, l.dy, l.dw, l.dh);
+    if (decoded) decoded.draw(ctx, l.dx, l.dy, l.dw, l.dh);
+    else ctx.drawImage(video as HTMLVideoElement, l.dx, l.dy, l.dw, l.dh);
     ctx.restore();
   }
   if (motion) drawTemplateDecorations(ctx, outW, outH, motion);

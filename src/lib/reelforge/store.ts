@@ -1,4 +1,4 @@
-import { clipSRT, exportSnapshot, readProject } from "./editing";
+import { clipSRT, exportSnapshot, readProject, settingsOf } from "./editing";
 // Tiny external store: undoable project + non-undoable runtime state.
 import { useSyncExternalStore } from "react";
 import { zipSync } from "fflate";
@@ -7,6 +7,7 @@ import {
   type Clip, type Project, type SourceMeta,
 } from "./core";
 import { downloadBlob, exportClip, type ExportFormat } from "./exporter";
+import { exportClipFast, fastExportSupported, FastExportUnavailable } from "./fast-export";
 
 export type Tab = "templates" | "clip" | "frame" | "captions" | "export" | "color" | "audio" | "titles" | "markers";
 export interface Job {
@@ -22,6 +23,8 @@ export interface Job {
   fileName?: string;
   error?: string;
   meta?: string;
+  /** Which exporter produced (or is producing) the file. */
+  path?: "fast" | "realtime";
 }
 interface Runtime {
   file: File | null;
@@ -255,10 +258,46 @@ async function run() {
       controllers.set(job.id, ac);
       patchJob(job.id, { status: "rendering", progress: 0 });
       try {
-        const r = await exportClip({
-          url, clip, captions, style, settings, signal: ac.signal,
-          onProgress: (x) => patchJob(job.id, { progress: x }),
-        });
+        const onProgress = (x: number) => patchJob(job.id, { progress: x });
+        const realtime = () => {
+          patchJob(job.id, { path: "realtime", progress: 0 });
+          return exportClip({
+            url,
+            clip,
+            captions,
+            style,
+            settings,
+            signal: ac.signal,
+            onProgress,
+          });
+        };
+        let r: Awaited<ReturnType<typeof exportClip>>;
+        if (!fastExportSupported()) {
+          if (settingsOf(settings).resolution === 2160)
+            throw new Error(
+              "4K export needs WebCodecs, which this browser doesn't provide. Choose 1080p or use Chrome/Edge.",
+            );
+          r = await realtime();
+        } else {
+          try {
+            // Fast path: WebCodecs, frame-exact, faster than real time, up to 4K.
+            patchJob(job.id, { path: "fast" });
+            r = await exportClipFast({
+              file: job.sourceFile,
+              clip,
+              captions,
+              style,
+              settings,
+              signal: ac.signal,
+              onProgress,
+            });
+          } catch (e) {
+            // Fall back to real-time capture only when WebCodecs can't handle this source/size.
+            if (!(e instanceof FastExportUnavailable) || settingsOf(settings).resolution === 2160)
+              throw e;
+            r = await realtime();
+          }
+        }
         patchJob(job.id, {
           status: "done", progress: 1, blob: r.blob, format: r.format,
           fileName: `${slug(clip.title)}_${clip.framing.aspect.replace(":", "x")}.${r.format.ext}`,

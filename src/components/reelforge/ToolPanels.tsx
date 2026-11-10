@@ -367,12 +367,16 @@ export function QualityControls({ clip }: { clip: Clip }) {
           onChange={(e) =>
             commit((p) => ({
               ...p,
-              exportSettings: { ...settings, resolution: Number(e.target.value) as 720 | 1080 },
+              exportSettings: {
+                ...settings,
+                resolution: Number(e.target.value) as 720 | 1080 | 2160,
+              },
             }))
           }
         >
           <option value={720}>720p</option>
           <option value={1080}>1080p</option>
+          <option value={2160}>4K (2160p)</option>
         </select>
       </label>
       <label className="block">
@@ -393,11 +397,13 @@ export function QualityControls({ clip }: { clip: Clip }) {
         </select>
       </label>
       <p className="tc text-muted-foreground">
-        {size.w}×{size.h} · {size.fps} fps target · {size.bitrate / 1e6} Mbps target
+        {size.w}×{size.h} · {size.fps} fps · {size.bitrate / 1e6} Mbps target
       </p>
       <p className="text-muted-foreground">
-        Real-time browser capture can drop frames on busy devices. Already queued jobs retain their
-        original settings.
+        {settings.resolution === 2160
+          ? "4K needs a WebCodecs encoder that supports this size (Chrome/Edge on most recent devices). If it isn't available, the export stops with a message rather than producing a smaller file. Files are about 4× larger than 1080p."
+          : "With WebCodecs (Chrome, Edge, recent Safari/Firefox) every frame is encoded — none dropped; otherwise exports fall back to real-time capture, which can drop frames on busy devices."}{" "}
+        Already queued jobs keep their original settings.
       </p>
     </div>
   );
