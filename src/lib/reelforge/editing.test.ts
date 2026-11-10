@@ -148,3 +148,46 @@ describe("preview/export and timeline geometry", () => {
     expect(snapTime(10.4, [10], 0.2)).toBe(10.4);
   });
 });
+
+describe("word-by-word caption data", () => {
+  const base = {
+    ...newProject(),
+    source: {
+      name: "s.mp4",
+      size: 1,
+      type: "video/mp4",
+      lastModified: 0,
+      duration: 10,
+      width: 640,
+      height: 360,
+    },
+  };
+  it("keeps valid word timings and animation settings, drops malformed ones", () => {
+    const p = readProject({
+      ...base,
+      captions: [
+        {
+          id: "a",
+          start: 0,
+          end: 1,
+          text: "hi there",
+          words: [
+            { text: "hi", start: 0, end: 0.4 },
+            { text: "there", start: 0.4, end: 1 },
+          ],
+        },
+        { id: "b", start: 2, end: 3, text: "bad", words: [{ text: "bad", start: "x", end: 3 }] },
+      ],
+      captionStyle: { ...base.captionStyle, animation: "pop", accent: "#ff00aa" },
+    });
+    expect(p.captions[0]!.words).toHaveLength(2);
+    expect(p.captions[1]!.words).toBeUndefined();
+    expect(p.captionStyle).toMatchObject({ animation: "pop", accent: "#ff00aa" });
+  });
+  it("defaults older projects to no animation", () => {
+    const { animation: _a, accent: _b, ...legacyStyle } = base.captionStyle;
+    const p = readProject({ ...base, captionStyle: { ...legacyStyle, animation: "spin" } });
+    expect(p.captionStyle.animation).toBe("none");
+    expect(p.captionStyle.accent).toBe("#c8ff3d");
+  });
+});

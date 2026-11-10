@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   ASPECTS, clampRange, clipCaptions, fmtTC, makeClips, parseSubtitles, splitClip, uid, validateClip,
-  type Aspect, type Caption, type Clip, type Framing,
+  type Aspect, type Caption, type CaptionAnimation, type Clip, type Framing,
 } from "@/lib/reelforge/core";
 import { drawFrame } from "@/lib/reelforge/render";
 import { downloadBlob, pickFormat } from "@/lib/reelforge/exporter";
@@ -20,6 +20,7 @@ import { audioGain, speedOf, outputDuration } from '@/lib/reelforge/editing';
 import { ColorPanel, AudioPanel, SpeedControl, TitlesPanel, MarkersPanel, QualityControls } from './ToolPanels';
 import { TemplatesPanel } from "./TemplatesPanel";
 import { AutoCaptions } from "./AutoCaptions";
+import { ANIMATIONS } from "@/lib/reelforge/caption-words";
 import { Timeline } from './Timeline';
 import { pickVideo } from "./EmptyStage";
 
@@ -426,6 +427,42 @@ function CaptionsTab({ clip }: { clip: Clip }) {
           <label className="flex items-center gap-1"><input type="checkbox" checked={style.weight === 800} onChange={(e) => setStyle({ weight: e.target.checked ? 800 : 600 })} />Bold</label>
           <label className="flex items-center gap-1">Color<input type="color" aria-label="Caption color" value={style.color} onChange={(e) => setStyle({ color: e.target.value })} /></label>
         </div>
+        <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+          <label className="text-xs">
+            <Label>Word animation</Label>
+            <select
+              aria-label="Word animation"
+              className={inputCls}
+              value={style.animation ?? "none"}
+              onChange={(e) => setStyle({ animation: e.target.value as CaptionAnimation })}
+            >
+              {ANIMATIONS.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex h-8 items-center gap-1 text-xs">
+            Accent
+            <input
+              type="color"
+              aria-label="Animation accent color"
+              value={style.accent ?? "#c8ff3d"}
+              disabled={(style.animation ?? "none") === "none" || style.animation === "reveal"}
+              onChange={(e) => setStyle({ accent: e.target.value })}
+            />
+          </label>
+        </div>
+        {(style.animation ?? "none") !== "none" && (
+          <p className="text-[11px] text-muted-foreground">
+            {ANIMATIONS.find((a) => a.id === style.animation)?.hint}.{" "}
+            {inClip.length > 0 &&
+              (inClip.every((c) => c.words?.length)
+                ? "These captions use spoken word timing from Auto-captions."
+                : `${inClip.filter((c) => c.words?.length).length} of ${inClip.length} captions here use spoken word timing from Auto-captions; the rest are timed by word length.`)}
+          </p>
+        )}
       </div>
     </div>
   );

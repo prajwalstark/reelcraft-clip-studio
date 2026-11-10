@@ -28,12 +28,20 @@ export interface Clip {
   overlay?: TitleSettings;
   template?: TemplateSettings;
 }
+export interface CaptionWordTiming {
+  text: string;
+  start: number; // SOURCE seconds
+  end: number;
+}
 export interface Caption {
   id: string;
   start: number; // SOURCE seconds
   end: number;
   text: string;
+  /** Optional per-word timing (from auto-captions), aligned with the words of `text`. */
+  words?: CaptionWordTiming[];
 }
+export type CaptionAnimation = "none" | "karaoke" | "highlight" | "pop" | "reveal";
 export interface CaptionStyle {
   size: number; // % of output height
   color: string;
@@ -41,6 +49,10 @@ export interface CaptionStyle {
   y: number; // 0..1 vertical centre of caption block
   weight: 600 | 800;
   uppercase: boolean;
+  /** Word-by-word animation; absent means "none" (whole caption at once). */
+  animation?: CaptionAnimation;
+  /** Accent colour for the animated word(s). */
+  accent?: string;
 }
 export interface SourceMeta {
   name: string;
@@ -75,6 +87,8 @@ export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   y: 0.7,
   weight: 800,
   uppercase: false,
+  animation: "none",
+  accent: "#c8ff3d",
 };
 
 export const uid = () =>

@@ -48,7 +48,8 @@ export const DEFAULT_AUDIO: AudioSettings = { volume: 1, muted: false, fadeIn: 0
 export const DEFAULT_EXPORT: ExportSettings = { resolution: 1080, fps: 30 };
 export const bounded = (x: unknown, fallback: number, min: number, max: number) =>
   typeof x === "number" && Number.isFinite(x) ? Math.max(min, Math.min(max, x)) : fallback;
-const hex = (x: unknown) => (typeof x === "string" && /^#[0-9a-f]{6}$/i.test(x) ? x : "#ffffff");
+const hex = (x: unknown, fallback = "#ffffff") =>
+  typeof x === "string" && /^#[0-9a-f]{6}$/i.test(x) ? x : fallback;
 export function speedOf(c: Clip) {
   return bounded(c.speed, 1, 0.5, 2);
 }
@@ -225,7 +226,21 @@ export function readProject(value: unknown): Project {
       c.end <= c.start
     )
       throw new Error("Invalid caption");
-    return { ...c, text: c.text.slice(0, 10000) };
+    const { words: rawWords, ...rest } = c;
+    const words =
+      Array.isArray(rawWords) &&
+      rawWords.length <= 2000 &&
+      rawWords.every(
+        (w) =>
+          w &&
+          typeof w.text === "string" &&
+          Number.isFinite(w.start) &&
+          Number.isFinite(w.end) &&
+          w.end >= w.start,
+      )
+        ? rawWords.map((w) => ({ text: w.text.slice(0, 200), start: w.start, end: w.end }))
+        : undefined;
+    return { ...rest, text: c.text.slice(0, 10000), ...(words ? { words } : {}) };
   });
   const style = p.captionStyle;
   const markers = (Array.isArray(p.markers) ? p.markers : [])
@@ -255,6 +270,10 @@ export function readProject(value: unknown): Project {
       y: bounded(style?.y, 0.7, 0.1, 0.95),
       weight: style?.weight === 600 ? 600 : 800,
       uppercase: style?.uppercase === true,
+      animation:
+        (["karaoke", "highlight", "pop", "reveal"] as const).find((a) => a === style?.animation) ??
+        "none",
+      accent: hex(style?.accent, "#c8ff3d"),
     },
   };
 }

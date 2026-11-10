@@ -14,6 +14,7 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 | Titles | One timed text overlay per clip, position, size, color and background; suitable for titles/lower thirds |
 | Captions | Manual timed cues, SRT/VTT import, style controls, burn-in toggle, speed-adjusted clip-relative SRT download |
 | Auto-captions | On-device speech recognition (Whisper via transformers.js in a Web Worker, WebGPU or WebAssembly) for one clip or the whole video; word-timed cues grouped by a length preset; one undoable edit that can replace captions in the range |
+| Word-by-word captions | Karaoke, Highlight, Pop and Reveal animations with an accent colour; uses spoken word timing from auto-captions and length-weighted timing for other captions; identical in preview and export |
 | Timeline | Horizontal zoom/scroll, trim handles, optional eight-pixel snapping to other clip boundaries and markers, named markers |
 | Keyboard | Space play/pause, I/O trim, M marker, Ctrl/Command+K split, arrows source time step, Shift+arrows one second, undo/redo |
 | Export | 720/1080 size presets, 24/30 fps targets, real-time browser recording, progress/cancel, ZIP with matching SRT |
@@ -42,6 +43,20 @@ Open **Captions → Auto-captions**, choose the range (this clip or the whole vi
 - The result is one undoable edit. Captions already in the range are replaced unless you untick the option. Progress, ETA and Cancel are shown; canceling changes nothing. Switching the source mid-run discards the result.
 - Verified in headless Chromium (WebAssembly path) on a 31 s H.264/AAC test video with two spoken passages: the decoded 16 kHz audio matches ffmpeg's conversion (correlation 0.989, zero lag); Accurate transcribed both passages with cue times within ~0.3 s of speech onset in ≈ 26 s including model load; Fast took ≈ 18 s but misheard most of the second passage. The WebGPU path was not exercised (no GPU in the test environment).
 - Limits: automatic transcripts make mistakes (names, jargon, overlapping speakers, music), so review the text. CPU (WebAssembly) transcription is slower than real time on many devices; the first run also waits for the model download.
+
+## Word-by-word captions
+
+In **Captions**, choose a **Word animation** and an **Accent** colour:
+
+- **Karaoke** — spoken words fill with the accent colour.
+- **Highlight** — an accent pill sits behind the word being spoken (text colour picked for contrast).
+- **Pop** — the current word bounces in the accent colour.
+- **Reveal** — words fade in as they are spoken; the box grows with them.
+- **None** (default) — the whole caption at once, exactly as before.
+
+Auto-captions store each word's spoken time alongside the caption. Correcting a misheard word keeps the timing as long as the number of words is unchanged; adding or removing words, or captions that were typed or imported from SRT/VTT, fall back to spreading the caption's time across its words by length. Trimming a caption's in/out points clamps its word times. The same canvas code draws the preview and the export, so what you see is what is burned in. SRT/VTT downloads stay plain (one cue per caption). Older projects load with no animation.
+
+Verified in Chromium: on the 31 s test video, Accurate auto-captions stored timings for every word; preview screenshots of all five modes and a real 1080×1920 export with Highlight showed the pill on the spoken word at 4.65 s ("are"), 5.40 s ("one") and 12.20 s ("and").
 
 ## Browser limitations and deferred features
 

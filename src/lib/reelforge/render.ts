@@ -3,6 +3,7 @@ import { drawTemplateDecorations } from "./template-render";
 import { titleOf, videoFilter } from "./editing";
 // Browser-only frame compositor shared by preview and export.
 import { activeCaptions, computeLayout, type Caption, type CaptionStyle, type Clip, type Framing } from "./core";
+import { captionWords, layoutWords, popScale, wordPhases } from "./caption-words";
 
 export const CAPTION_FONT = '"Instrument Sans", system-ui, sans-serif';
 
@@ -82,6 +83,10 @@ export function drawFrame(
   ctx.font = `${style.weight} ${fs}px ${CAPTION_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  if (style.animation && style.animation !== "none") {
+    drawAnimatedCaptions(ctx, act, style, t, outW, outH, fs);
+    return;
+  }
   const text = act.map((c) => c.text).join("\n");
   const lines = wrap(ctx, style.uppercase ? text.toUpperCase() : text, outW * 0.84);
   const lh = fs * 1.22;
@@ -104,4 +109,106 @@ export function drawFrame(
     ctx.fillStyle = style.color;
     ctx.fillText(ln, outW / 2, y);
   });
+}
+
+/** Dark text on light accents, white on dark ones. */
+export function contrastText(hex: string) {
+  const n = parseInt(hex.slice(1), 16);
+  if (!Number.isFinite(n) || hex.length !== 7) return "#0b0b0d";
+  const lin = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return L > 0.35 ? "#0b0b0d" : "#ffffff";
+}
+
+/** Word-by-word captions: karaoke fill, highlight pill, pop or reveal. */
+function drawAnimatedCaptions(
+  ctx: CanvasRenderingContext2D,
+  active: Caption[],
+  style: CaptionStyle,
+  t: number,
+  outW: number,
+  outH: number,
+  fs: number,
+) {
+  const mode = style.animation!;
+  const accent = style.accent ?? "#c8ff3d";
+  const words = active.flatMap((c, ci) =>
+    captionWords(c).map((w, i) => ({
+      ...w,
+      br: w.br || (ci > 0 && i === 0),
+      text: style.uppercase ? w.text.toUpperCase() : w.text,
+    })),
+  );
+  if (!words.length) return;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  // Extra word spacing so the highlight pill and the popped word don't crowd their neighbours.
+  const gap = mode === "highlight" ? fs * 0.24 : mode === "pop" ? fs * 0.16 : 0;
+  const measure = (s: string) => ctx.measureText(s).width + (s === " " ? gap : 0);
+  const lines = layoutWords(words, measure, outW * 0.84, outW / 2);
+  const phases = wordPhases(words, t);
+  const lh = fs * 1.22;
+  const top = style.y * outH - (lines.length * lh) / 2;
+  let k = 0;
+  lines.forEach((line, li) => {
+    const y = top + lh * li + lh / 2;
+    const base = k;
+    k += line.words.length;
+    const shown =
+      mode === "reveal" ? line.words.filter((_, j) => phases[base + j] !== "future") : line.words;
+    if (!shown.length) return;
+    if (style.bg) {
+      // The box spans the words on screen, so with "reveal" it grows as words appear.
+      const first = shown[0]!;
+      const last = shown.at(-1)!;
+      const px = fs * 0.35;
+      ctx.fillStyle = "rgba(0,0,0,0.62)";
+      ctx.beginPath();
+      ctx.roundRect(first.x - px, y - lh / 2, last.x + last.width - first.x + px * 2, lh, fs * 0.2);
+      ctx.fill();
+    }
+    line.words.forEach((w, j) => {
+      const phase = phases[base + j]!;
+      if (mode === "reveal" && phase === "future") return;
+      let color = style.color;
+      let scale = 1;
+      let alpha = 1;
+      let lift = 0;
+      if (mode === "karaoke" && phase !== "future") color = accent;
+      if (mode === "highlight" && phase === "current") {
+        ctx.fillStyle = accent;
+        ctx.beginPath();
+        ctx.roundRect(w.x - fs * 0.16, y - lh * 0.45, w.width + fs * 0.32, lh * 0.9, fs * 0.18);
+        ctx.fill();
+        color = contrastText(accent);
+      }
+      if (mode === "pop" && phase === "current") {
+        color = accent;
+        scale = popScale(w, t);
+      }
+      if (mode === "reveal") {
+        const k2 = Math.min(1, Math.max(0, (t - w.start) / 0.14));
+        alpha = k2;
+        lift = (1 - k2) * fs * 0.25;
+      }
+      ctx.save();
+      ctx.globalAlpha *= alpha;
+      ctx.translate(w.x + w.width / 2, y + lift);
+      if (scale !== 1) ctx.scale(scale, scale);
+      const highlighted = mode === "highlight" && phase === "current";
+      if (!style.bg && !highlighted) {
+        ctx.lineWidth = fs * 0.14;
+        ctx.strokeStyle = "rgba(0,0,0,0.85)";
+        ctx.lineJoin = "round";
+        ctx.strokeText(w.text, -w.width / 2, 0);
+      }
+      ctx.fillStyle = color;
+      ctx.fillText(w.text, -w.width / 2, 0);
+      ctx.restore();
+    });
+  });
+  ctx.textAlign = "center";
 }

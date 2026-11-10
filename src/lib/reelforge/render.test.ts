@@ -41,3 +41,77 @@ it("applies color only to video, draws titles during their source interval, and 
   expect(calls.map((x) => x[0])).toEqual(["video"]);
   expect(stack).toHaveLength(0);
 });
+
+it("draws word-by-word captions: accent on spoken words (karaoke) and hides upcoming words (reveal)", () => {
+  const drawn: Array<[string, string, number]> = [];
+  const ctx = {
+    filter: "none",
+    globalAlpha: 1,
+    fillStyle: "",
+    fillRect: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    drawImage: vi.fn(),
+    beginPath: vi.fn(),
+    roundRect: vi.fn(),
+    fill: vi.fn(),
+    translate: vi.fn(),
+    scale: vi.fn(),
+    strokeText: vi.fn(),
+    fillText(this: { fillStyle: string; globalAlpha: number }, text: string) {
+      drawn.push([text, this.fillStyle, this.globalAlpha]);
+    },
+    measureText: (s: string) => ({ width: s.length * 10 }),
+  } as unknown as CanvasRenderingContext2D;
+  const video = { videoWidth: 0, videoHeight: 0 } as HTMLVideoElement;
+  const captions = [
+    {
+      id: "a",
+      start: 0,
+      end: 3,
+      text: "one two three",
+      words: [
+        { text: "one", start: 0, end: 0.8 },
+        { text: "two", start: 1, end: 1.8 },
+        { text: "three", start: 2, end: 2.8 },
+      ],
+    },
+  ];
+  const style = { ...DEFAULT_CAPTION_STYLE, color: "#ffffff", accent: "#ff0000" };
+  drawFrame(
+    ctx,
+    video,
+    540,
+    960,
+    DEFAULT_FRAMING,
+    captions,
+    { ...style, animation: "karaoke" },
+    1.2,
+  );
+  expect(drawn).toEqual([
+    ["one", "#ff0000", 1],
+    ["two", "#ff0000", 1],
+    ["three", "#ffffff", 1],
+  ]);
+  drawn.length = 0;
+  drawFrame(
+    ctx,
+    video,
+    540,
+    960,
+    DEFAULT_FRAMING,
+    captions,
+    { ...style, animation: "reveal" },
+    1.2,
+  );
+  expect(drawn.map((d) => d[0])).toEqual(["one", "two"]);
+  drawn.length = 0;
+  drawFrame(ctx, video, 540, 960, DEFAULT_FRAMING, captions, { ...style, animation: "none" }, 1.2);
+  expect(drawn.map((d) => d[0])).toEqual(["one two three"]);
+});
+
+it("picks readable text on the highlight pill", async () => {
+  const { contrastText } = await import("./render");
+  expect(contrastText("#c8ff3d")).toBe("#0b0b0d");
+  expect(contrastText("#1d4ed8")).toBe("#ffffff");
+});

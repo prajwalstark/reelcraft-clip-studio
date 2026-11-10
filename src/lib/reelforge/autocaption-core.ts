@@ -249,12 +249,28 @@ export function wordsToCaptions(words: Word[], opts: CueOptions, limitEnd = Infi
   let cur: Word[] = [];
   const flush = () => {
     if (!cur.length) return;
-    const text = cur
+    // Fold punctuation-only tokens into the previous word so the stored word timings line
+    // up one-to-one with the words of the caption text (used by word-by-word animation).
+    const tokens: Word[] = [];
+    for (const w of cur) {
+      const prev = tokens.at(-1);
+      if (prev && /^[,.!?;:%)\]…'"]+$/.test(w.text)) {
+        prev.text += w.text;
+        prev.end = Math.max(prev.end, w.end);
+      } else tokens.push({ ...w });
+    }
+    const text = tokens
       .map((w) => w.text)
       .join(" ")
-      .replace(/\s+([,.!?;:%)])/g, "$1")
       .trim();
-    if (text) cues.push({ id: uid(), start: cur[0]!.start, end: cur.at(-1)!.end, text });
+    if (text)
+      cues.push({
+        id: uid(),
+        start: cur[0]!.start,
+        end: cur.at(-1)!.end,
+        text,
+        words: tokens.map((w) => ({ text: w.text, start: r3(w.start), end: r3(w.end) })),
+      });
     cur = [];
   };
   for (const w of words) {
