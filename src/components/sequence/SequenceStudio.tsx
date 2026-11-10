@@ -1,6 +1,13 @@
 import { memo, useEffect, useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 import {
+  loadMedia,
+  pruneMedia,
+  rememberMedia,
+  saveMedia,
+  setRememberMedia,
+} from "@/lib/media-vault";
+import {
   type Sequence,
   dimensions,
   type Asset,
@@ -13,6 +20,7 @@ import {
   addItem,
   patchItem,
   deleteItem,
+  removeAsset,
   splitItem,
   crossfade,
   changeFps,
@@ -192,7 +200,9 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
     [ready, setReady] = useState(false),
     [zoom, setZoom] = useState(40),
     [resolution, setResolution] = useState<720 | 1080 | 2160>(2160),
-    [storageError, setStorageError] = useState("");
+    [storageError, setStorageError] = useState(""),
+    [restoring, setRestoring] = useState(0),
+    [keepMedia, setKeepMediaState] = useState(true);
   const seqRef = useRef(sequence);
   seqRef.current = sequence;
   const importInput = useRef<HTMLInputElement>(null),
@@ -201,15 +211,21 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
     relinkId = useRef(""),
     operation = useRef<AbortController | null>(null);
   useEffect(() => {
+    let restored: Sequence | null = null;
     try {
       const saved = localStorage.getItem(STORAGE);
-      if (saved) setSequence(parseSequence(JSON.parse(saved)));
+      if (saved) setSequence((restored = parseSequence(JSON.parse(saved))));
     } catch {
       setStorageError(
         "Saved sequence could not be restored. Open a saved .reelseq.json file to recover it.",
       );
     }
+    setKeepMediaState(rememberMedia());
     setReady(true);
+    // Bring back media kept in this browser, then drop copies no longer referenced.
+    void restoreMedia(restored?.assets ?? []).then(() =>
+      pruneMedia("seq:", new Set((restored?.assets ?? []).map((a) => `seq:${a.id}`))),
+    );
     return () => operation.current?.abort();
   }, []);
   useEffect(() => {
@@ -234,6 +250,30 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
       setSequence(next);
     } catch (e) {
       toast.error(errorText(e));
+    }
+  };
+  /** Restore files for `assets` from this browser's storage (matching name, size and date). */
+  const restoreMedia = async (assets: Asset[]) => {
+    if (!assets.length) return;
+    setRestoring(assets.length);
+    try {
+      const found = new Map<string, File>();
+      for (const a of assets) {
+        const f = await loadMedia(`seq:${a.id}`, a);
+        if (f) found.set(a.id, f);
+      }
+      if (found.size) setFiles((old) => new Map([...found, ...old]));
+    } finally {
+      setRestoring(0);
+    }
+  };
+  /** Keep a local copy of an imported/relinked file; warn once if the browser won't take it. */
+  const warnedKeep = useRef(false);
+  const keepFile = async (id: string, file: File) => {
+    const r = await saveMedia(`seq:${id}`, file);
+    if (!r.ok && r.reason !== "off" && !warnedKeep.current) {
+      warnedKeep.current = true;
+      toast.warning(`${file.name}: ${r.message} It will need relinking after a refresh.`);
     }
   };
   const enhancement = sequence.enhancement ?? DEFAULT_ENHANCEMENT;
@@ -279,6 +319,7 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
           signal.throwIfAborted();
           setFiles((old) => new Map(old).set(a.id, file));
           commit((s) => ({ ...s, assets: [...s.assets, a] }));
+          void keepFile(a.id, file);
           setSource(a.id);
         } catch (e) {
           if (signal.aborted) throw e;
@@ -307,6 +348,7 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
         throw new Error("Media does not match the saved source.");
       signal.throwIfAborted();
       setFiles((old) => new Map(old).set(asset.id, file));
+      void keepFile(asset.id, file);
       toast.success(`Relinked ${asset.name}`);
     });
   const drop = (e: DragEvent<HTMLDivElement>, track: TrackId) => {
@@ -458,6 +500,7 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
             signal.throwIfAborted();
             setSequence(next);
             setFiles(new Map());
+            void restoreMedia(next.assets);
             setUndo([]);
             setRedo([]);
             setSelected("");
@@ -477,11 +520,18 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
           {storageError}
         </p>
       )}
-      {!!missing && (
-        <p className="seq-notice">
-          {missing} source file{missing === 1 ? "" : "s"} need relinking. Projects save edits; media
-          stays on your device.
+      {restoring > 0 ? (
+        <p className="seq-notice" role="status">
+          Restoring {restoring} media file{restoring === 1 ? "" : "s"} from this browser…
         </p>
+      ) : (
+        !!missing && (
+          <p className="seq-notice">
+            {missing} source file{missing === 1 ? "" : "s"} need relinking:{" "}
+            {missing === 1 ? "it wasn't" : "they weren't"} kept in this browser (too large, or "Keep
+            media after refresh" is off). Media never leaves your device.
+          </p>
+        )
       )}
       <fieldset disabled={!!busy} className="seq-workspace">
         <aside className="seq-bin">
@@ -492,6 +542,20 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
           <p className="seq-subtle">
             Drag media to a track, or use + V1 / + A1. Videos include their audio.
           </p>
+          <label className="seq-subtle seq-keep">
+            <input
+              type="checkbox"
+              checked={keepMedia}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setKeepMediaState(on);
+                setRememberMedia(on);
+                if (on) files.forEach((f, id) => void keepFile(id, f));
+                else void pruneMedia("", new Set());
+              }}
+            />
+            Keep media after refresh (stored only in this browser; applies to both editors)
+          </label>
           <div className="seq-assets">
             {!sequence.assets.length && (
               <button className="seq-import-empty" onClick={() => importInput.current?.click()}>
@@ -520,6 +584,30 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                   {a.kind === "image" ? "Image" : `${a.duration.toFixed(1)} s`} · {a.kind}
                 </small>
                 <div className="seq-actions">
+                  <button
+                    className="seq-remove"
+                    aria-label={`Remove ${a.name} from the bin`}
+                    title="Remove from bin"
+                    onClick={() => {
+                      const uses = sequence.items.filter((c) => c.assetId === a.id).length;
+                      if (
+                        uses &&
+                        !window.confirm(
+                          `Remove "${a.name}" and its ${uses} clip${uses === 1 ? "" : "s"} from the timeline? You can undo this.`,
+                        )
+                      )
+                        return;
+                      commit((s) => removeAsset(s, a.id));
+                      if (source === a.id) setSource("");
+                      if (sequence.items.some((c) => c.id === selected && c.assetId === a.id))
+                        setSelected("");
+                      toast.success(`Removed ${a.name}`, {
+                        description: "Use Undo to bring it back.",
+                      });
+                    }}
+                  >
+                    Remove
+                  </button>
                   {!files.has(a.id) ? (
                     <button
                       onClick={() => {
@@ -986,7 +1074,10 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
         </div>
         <footer className="seq-footer">
           <span>Local editing · 3-minute sequence limit · {sequence.items.length}/200 clips</span>
-          <span>Autosave stores edits, not media · Sampled waveforms</span>
+          <span>
+            Autosave keeps edits{keepMedia ? " and media (in this browser)" : ""} · Sampled
+            waveforms
+          </span>
         </footer>
       </section>
     </div>

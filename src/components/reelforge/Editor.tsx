@@ -21,6 +21,7 @@ import { audioGain, speedOf, outputDuration } from '@/lib/reelforge/editing';
 import { ColorPanel, AudioPanel, SpeedControl, TitlesPanel, MarkersPanel, QualityControls } from './ToolPanels';
 import { TemplatesPanel } from "./TemplatesPanel";
 import { AutoCaptions } from "./AutoCaptions";
+import { SourceMenu } from "./SourceMenu";
 import { ANIMATIONS } from "@/lib/reelforge/caption-words";
 import { Timeline } from './Timeline';
 import { pickVideo } from "./EmptyStage";
@@ -89,7 +90,7 @@ function TopBar() {
         <Button size="icon" variant="ghost" aria-label="Undo" disabled={!canUndo} onClick={undo}><Undo2 className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" aria-label="Redo" disabled={!canRedo} onClick={redo}><Redo2 className="h-4 w-4" /></Button>
         <span className="mx-1 h-5 w-px bg-border" />
-        <Button size="sm" variant="ghost" onClick={() => pickVideo(loadSource)}><Upload className="h-4 w-4" />Source</Button>
+        <SourceMenu />
         <Button size="sm" variant="ghost" onClick={exportProjectJSON}><Save className="h-4 w-4" />Save</Button>
         <Button
           size="sm"

@@ -557,3 +557,17 @@
   font-size: 10px;
   padding: 4px 6px;
 }
+
+.seq-keep {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.seq-asset .seq-actions .seq-remove {
+  margin-right: auto;
+  color: oklch(0.72 0.17 25);
+}
+.seq-asset .seq-actions .seq-remove:hover {
+  background: oklch(0.65 0.2 25 / 0.14);
+}

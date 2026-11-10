@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { EmptyStage } from "@/components/reelforge/EmptyStage";
 import { Editor } from "@/components/reelforge/Editor";
 import { Toaster } from "@/components/ui/sonner";
-import { hydrate, sourceMissing, useStore } from "@/lib/reelforge/store";
+import { hydrate, restoreSource, sourceMissing, useStore } from "@/lib/reelforge/store";
 
 export const Route = createFileRoute("/studio")({
   ssr: false,
@@ -31,7 +31,10 @@ const SequenceStudio = lazy(() => import("@/components/sequence/SequenceStudio")
 function Studio() {
   const [sequenceOpened, setSequenceOpened] = useState(false);
   const [workspace, setWorkspace] = useState<"shorts" | "sequence">("shorts");
-  useEffect(() => hydrate(), []);
+  useEffect(() => {
+    hydrate();
+    void restoreSource();
+  }, []);
   const missing = useStore((s) => sourceMissing(s));
   const url = useStore((s) => s.rt.url);
   return (

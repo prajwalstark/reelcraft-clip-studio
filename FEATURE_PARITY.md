@@ -19,7 +19,7 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 | Keyboard | Space play/pause, I/O trim, M marker, Ctrl/Command+K split, arrows source time step, Shift+arrows one second, undo/redo |
 | Export | 720p / 1080p / 4K (2160p) presets at 24/30 fps; frame-exact WebCodecs encoding (MP4 H.264+AAC or WebM VP9+Opus) with pitch-preserving speed changes, real-time recording as a fallback; progress/cancel, ZIP with matching SRT |
 | Native templates | Five original single-clip styles, animated titles/subtitles, motion/tempo/accent controls, optional per-clip caption styling, selected-clip application and undo |
-| Projects | Existing v1 JSON compatibility, autosave/relink, project import/export, undo/redo for edits |
+| Projects | Existing v1 JSON compatibility, autosave (flushed when the tab is hidden or closed), source video kept in this browser so a refresh restores it, Video menu to replace or remove the source, relink fallback, project import/export, undo/redo for edits |
 | Export isolation | Each queued job captures its source File, clip settings, captions/style, quality and SRT; later edits cannot change it |
 | Small screens | Shorts/Preview/Tools panel navigation; eight inspector tabs |
 
@@ -31,7 +31,7 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 - Color filters apply only to video; titles and captions stay sharp. Blur is scaled with render resolution.
 - Burn-in controls both previewed captions and rendered captions. SRT sidecars remain available when burn-in is off.
 - New source/project operations clear edit history, preventing undo from restoring metadata for a different local File. Source changes cancel pending exports; completed downloads remain available.
-- Local videos are not uploaded or stored in project JSON. Re-select the same source after reloading.
+- Local videos are never uploaded and are not stored in project JSON. A copy is kept in this browser's own storage (IndexedDB) so a refresh restores the video automatically; see [Keeping media after a refresh](#keeping-media-after-a-refresh).
 
 ## Auto-captions
 
@@ -74,6 +74,19 @@ Verified in headless Chromium on a CPU-only 4-core sandbox (no GPU, no hardware 
 | 20 s test pattern, 2160×3840 (4K) | 114 s | 600 / 600 frames at 30 fps, 20.0 s, 40.9 MB, audio intact |
 
 Profiling showed decode ≈ 11 ms/frame, encode ≈ 22 ms/frame and compositing 0.07 ms/frame; in this sandbox, moving each decoded frame onto the 2D canvas is a CPU copy (software rendering), which dominates. On machines with a GPU canvas and hardware codecs those costs are much lower, but that was not measured here.
+
+## Keeping media after a refresh
+
+Both editors keep a copy of imported media in the browser's own storage (IndexedDB) on this device, so refreshing or reopening the tab restores it — no re-selecting. Nothing is uploaded.
+
+- **Shorts editor:** the header's **Video** menu shows whether the video is kept (and its size), and offers **Replace video…** and **Remove video**. Both ask first, because clips, captions and markers belong to a specific video; Remove also deletes the kept copy. Caption style and export settings are preserved.
+- **Sequence Studio:** each media-bin item has **Remove**, which also removes that media's clips (and their crossfades) from the timeline after a confirmation; Undo brings them back. A clip on a locked track blocks removal. Copies of media no longer in the sequence are deleted on the next load.
+- **Setting:** "Remember video after refresh" (Video menu) / "Keep media after refresh" (media bin) is one setting for the whole app. Turning it off deletes every kept copy.
+- **Limits:** a file is only kept if it fits in the storage the browser allows this site (checked first); otherwise the menu explains why and the previous relink flow is used. The browser is asked to treat the storage as persistent, but it may still evict it under disk pressure; private windows usually discard it. Kept media takes disk space until removed.
+- A restored file must match the saved name, size and modified date, so a different file is never silently swapped in.
+- Autosave of edits now also flushes when the tab is hidden or closed and immediately after Remove/New, so a quick refresh can't bring back a removed video or drop the last edit.
+
+Verified in Chromium: load video → add caption → refresh restored the video (playable) with its clips and caption and no relink screen; Replace and Remove confirmed and worked; Remove → refresh showed the empty stage. In Sequence Studio, two imported files survived a refresh with no relink prompts; removing one removed its timeline clip after confirmation, and Undo restored both.
 
 ## Browser limitations and deferred features
 
