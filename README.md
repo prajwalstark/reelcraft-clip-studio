@@ -1,5 +1,7 @@
 # Reelcraft Clip Studio
 
+**Routes:** `/` is the cinematic landing page (GSAP ScrollTrigger + Lenis, scroll-scrubbed video hero, React Three Fiber scene, horizontal workflow, live-crop showcase). The editor lives at **`/studio`**. Landing components are in `src/components/landing/`; the footage is rendered in-house — see `scripts/render-footage/`. All motion respects `prefers-reduced-motion` (static stills, no smooth scroll or pinning).
+
 **Editable templates:** Load a video and open **Templates** for five original styles inspired by the selected CapCut trends. Customize titles, subtitles, accent colors and motion; apply to one clip or a selection and undo changes. See [FEATURE_PARITY.md](FEATURE_PARITY.md#editable-template-gallery) for scope and inspiration links.
 
 **Editor tools update:** color adjustments, audio fades, clip speed, timed titles, timeline markers/snapping/zoom, responsive panels and configurable exports. See [FEATURE_PARITY.md](FEATURE_PARITY.md) for implemented features, shortcuts, timing rules and verification limits.

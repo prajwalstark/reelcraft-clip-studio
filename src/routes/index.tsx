@@ -1,74 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useState } from "react";
-import { EmptyStage } from "@/components/reelforge/EmptyStage";
-import { Editor } from "@/components/reelforge/Editor";
-import { Toaster } from "@/components/ui/sonner";
-import { hydrate, sourceMissing, useStore } from "@/lib/reelforge/store";
+import { Landing } from "@/components/landing/Landing";
 
 export const Route = createFileRoute("/")({
-  ssr: false,
   head: () => ({
     meta: [
-      { title: "ReelForge — Long video to shorts editor" },
+      { title: "ReelForge — One film. Endless reels." },
       {
         name: "description",
-        content: "Local-first editor that splits long videos into vertical shorts and Reels.",
+        content:
+          "Turn long-form video into vertical shorts. Split, trim, crop, caption and export — entirely in your browser.",
       },
-      { property: "og:title", content: "ReelForge — Long video to shorts editor" },
+      { property: "og:title", content: "ReelForge — One film. Endless reels." },
       {
         property: "og:description",
-        content: "Split, crop, caption and export shorts in your browser.",
+        content: "A local-first studio that turns one long video into a stack of vertical reels.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
+      { property: "og:image", content: "/media/hero-end.jpg" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "theme-color", content: "#040406" },
     ],
+    links: [{ rel: "preload", href: "/media/hero-poster.jpg", as: "image" }],
   }),
-  component: Index,
+  component: Landing,
 });
-
-const SequenceStudio = lazy(() => import("@/components/sequence/SequenceStudio"));
-
-function Index() {
-  const [sequenceOpened, setSequenceOpened] = useState(false);
-  const [workspace, setWorkspace] = useState<"shorts" | "sequence">("shorts");
-  useEffect(() => hydrate(), []);
-  const missing = useStore((s) => sourceMissing(s));
-  const url = useStore((s) => s.rt.url);
-  return (
-    <main className="grain h-screen w-screen flex flex-col overflow-hidden">
-      <nav
-        aria-label="Editor workspace"
-        className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-[#101218] px-4 py-2 text-xs"
-      >
-        <button
-          className="rounded px-3 py-1.5 aria-pressed:bg-white/10"
-          aria-pressed={workspace === "shorts"}
-          onClick={() => setWorkspace("shorts")}
-        >
-          Shorts editor
-        </button>
-        <button
-          className="rounded px-3 py-1.5 aria-pressed:bg-white/10"
-          aria-pressed={workspace === "sequence"}
-          onClick={() => {
-            setSequenceOpened(true);
-            setWorkspace("sequence");
-          }}
-        >
-          Sequence Studio · Beta
-        </button>
-      </nav>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {sequenceOpened && (
-          <div hidden={workspace !== "sequence"}>
-            <Suspense fallback={<p className="p-8">Loading Sequence Studio…</p>}>
-              <SequenceStudio active={workspace === "sequence"} />
-            </Suspense>
-          </div>
-        )}
-        {workspace === "shorts" && <>{!url ? <EmptyStage relink={missing} /> : <Editor />}</>}
-      </div>
-      <Toaster theme="dark" />
-    </main>
-  );
-}
