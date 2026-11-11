@@ -4,6 +4,8 @@
 
 **Auto-captions:** Captions → Auto-captions transcribes a clip or the whole video on-device with Whisper (nothing is uploaded) and turns it into editable, timed captions. See [FEATURE_PARITY.md](FEATURE_PARITY.md#auto-captions).
 
+**Scopes:** Color → Scopes adds a live waveform, RGB parade, vectorscope and histogram of the graded frame (titles and captions excluded). See [FEATURE_PARITY.md](FEATURE_PARITY.md#scopes).
+
 **Colour wheels & curves:** Color → Colour wheels & curves adds Resolve-style Lift/Gamma/Gain/Offset wheels, temperature/tint, contrast with pivot, saturation, and Custom / Hue vs Hue / Hue vs Sat / Luma vs Sat curves, rendered on the GPU identically in preview and export. See [FEATURE_PARITY.md](FEATURE_PARITY.md#colour-wheels-and-curves).
 
 **Looks (LUT & CDL):** Color → Looks imports `.cube`, `.3dl` and ASC CDL files — e.g. exported from DaVinci Resolve (*Generate LUT*) or Premiere Pro (Lumetri → *Export .cube*) — with intensity, apply-to-all and a library kept in this browser. See [FEATURE_PARITY.md](FEATURE_PARITY.md#looks-luts-and-cdl-from-resolve-or-premiere).
