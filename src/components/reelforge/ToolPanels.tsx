@@ -14,6 +14,7 @@ import {
 } from "@/lib/reelforge/editing";
 import { LooksPanel } from "./LooksPanel";
 import { ColorGradePanel } from "./ColorGradePanel";
+import { ScopesPanel } from "./ScopesPanel";
 
 const field = "w-full rounded border bg-background p-2 text-xs";
 function Slider({
@@ -87,6 +88,7 @@ export function ColorPanel({ clip }: { clip: Clip }) {
     updateClip(clip.id, { color: { ...c, ...p } }, `color-${clip.id}`);
   return (
     <div className="space-y-4">
+      <ScopesPanel />
       <ColorGradePanel clip={clip} />
       <LooksPanel clip={clip} />
       <p className="text-xs text-muted-foreground">

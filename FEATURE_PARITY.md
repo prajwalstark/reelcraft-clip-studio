@@ -10,6 +10,7 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 | Reframing | 9:16, 1:1, 16:9; fit/fill, zoom, focal position, safe-zone guide |
 | Color | Per-clip brightness, contrast, saturation, hue, blur; bypass and reset; shared preview/export compositor |
 | Colour wheels & curves | Resolve-style Lift / Gamma / Gain / Offset wheels with master sliders, temperature, tint, contrast with pivot, saturation; Custom (Y/R/G/B), Hue vs Hue, Hue vs Sat and Luma vs Sat curves; apply to all clips, reset, undo; same GPU pass as preview and export |
+| Scopes | Waveform (luma), RGB parade, vectorscope (Rec.709 targets, skin-tone line) and histogram with crushed/clipped readout, measured from the graded video before titles and captions |
 | Looks (LUT & CDL) | Import `.cube` (1D/3D), `.3dl` and ASC CDL (`.cdl`/`.cc`/`.ccc`) — e.g. from DaVinci Resolve or Premiere Pro; per-clip look with intensity, apply to all clips, a looks library kept in this browser; GPU (WebGL2) grading of the video area only, identical in preview and export |
 | Audio | Per-clip volume, mute, fade in/out; fades measured in output seconds and scaled to fit short clips |
 | Speed | 0.5×, 1×, 1.5×, 2×; playback and export use the same speed; output duration and SRT timings adjust |
@@ -112,13 +113,25 @@ Verified: the `.cube` and `.3dl` parsers matched **ffmpeg's `lut3d`** within 1/2
 - **Apply to all** copies the grade to every clip; **Reset** removes it. Edits are undoable; a grade returned to neutral is removed from the project.
 - **Order:** basic adjustments → wheels/temperature/contrast/saturation → curves → imported look (at its intensity). Everything runs in the one WebGL2 pass, over the video area only, identical in preview and both exporters; an export whose grade can't be rendered stops with a message.
 
-Verified: the GPU pass matched the CPU reference exactly (0/255) for wheels and sliders, within 1/255 for all curves, and within 1/255 for everything combined with a LUT at 60%, over 57,600 pixels each. In Chromium, a grade made through the UI (Gain puck dragged toward orange, Lift master −0.3, Saturation 130%, a Y-curve point clicked at 0.5 → 0.62) and exported at 1080×1920 matched the CPU reference on the same frame within 1.42/255 mean, while the grade itself changed that frame by 9.65/255. Scopes (waveform, vectorscope, histogram) are not built yet.
+Verified: the GPU pass matched the CPU reference exactly (0/255) for wheels and sliders, within 1/255 for all curves, and within 1/255 for everything combined with a LUT at 60%, over 57,600 pixels each. In Chromium, a grade made through the UI (Gain puck dragged toward orange, Lift master −0.3, Saturation 130%, a Y-curve point clicked at 0.5 → 0.62) and exported at 1080×1920 matched the CPU reference on the same frame within 1.42/255 mean, while the grade itself changed that frame by 9.65/255. 
+## Scopes
+
+**Color → Scopes** shows live scopes of the graded preview frame:
+
+- **Waveform** — luma per column of the picture, 0 (black) at the bottom to 100 (white) at the top.
+- **Parade** — red, green and blue waveforms side by side; level them to neutralise a cast.
+- **Vectorscope** — Rec.709 Cb/Cr: hue around the circle, saturation outward, with boxes at the 75 % colour-bar targets (R, Mg, B, Cy, G, Yl) and the skin-tone line at 123°. Points are tinted by their hue.
+- **Histogram** — red, green and blue overlaid with a luma line, plus the share of pixels crushed to black and clipped to white.
+
+The scopes measure the video **after grading and before templates, titles and captions** — the pixels that get exported — so text doesn't skew them. They sample a 256-pixel-wide copy of the frame about eight times a second, only from the editor preview (never from exports), and only while the panel is open; the mode and open state are remembered.
+
+Verified: unit tests check Rec.709 Cb/Cr geometry (complementary targets exactly opposite, correct order and quadrants, skin tones near the I-line), histogram/waveform/parade placement and crushed/clipped shares. In Chromium, a test pattern's yellow and blue bars read at about 93 % and 7 % on the waveform and land on the Yl and B targets on the vectorscope; adding a white caption over the frame left every scope value unchanged; and warming the Gain wheel raised the red mean (63 → 71) and lowered blue (93 → 88) on real footage.
 
 ## Browser limitations and deferred features
 
 **Export paths.** Where WebCodecs is available (Chrome, Edge, recent Safari and Firefox), exports are frame-exact: each output frame is decoded at its exact source timestamp, composited with the same code as the preview and encoded — the clip is never played, so no frames are dropped. MP4 (H.264 + AAC) is used when the browser can encode both, otherwise WebM (VP9 + Opus); the job shows which. Speed changes are rendered offline with a pitch-preserving time-stretch (WSOLA). How fast this runs depends on the device: with hardware video decode/encode it is typically faster than real time; on CPU-only machines it can take longer than the clip, but the result is still complete. If WebCodecs can't decode the source or encode the size at 720p/1080p, the export falls back to the original real-time capture: canvas + WebAudio + MediaRecorder exports run in real time. Keep the tab visible. Resolution is fixed by the selected preset, while frame rate/bitrate are targets and may vary under device load. Format selection prefers supported H.264 MP4, then browser-selected MP4, then WebM; the UI reports the available choice. MP4 alone does not guarantee H.264/AAC compatibility. Pitch preservation depends on the browser.
 
-Not implemented: AI highlight selection, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes, professional grading scopes, noise reduction, a native Filmcraft/WASM engine, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
+Not implemented: AI highlight selection, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes, noise reduction, a native Filmcraft/WASM engine, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
 
 ## Validation
 

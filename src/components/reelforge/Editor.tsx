@@ -21,6 +21,7 @@ import { audioGain, speedOf, outputDuration } from '@/lib/reelforge/editing';
 import { ColorPanel, AudioPanel, SpeedControl, TitlesPanel, MarkersPanel, QualityControls } from './ToolPanels';
 import { TemplatesPanel } from "./TemplatesPanel";
 import { AutoCaptions } from "./AutoCaptions";
+import { setScopeSource } from "@/lib/reelforge/grading/scopes";
 import { SourceMenu } from "./SourceMenu";
 import { ANIMATIONS } from "@/lib/reelforge/caption-words";
 import { Timeline } from './Timeline';
@@ -182,6 +183,8 @@ function Preview() {
 
   useEffect(() => {
     let raf = 0;
+    // Only this preview canvas feeds the colour scopes (never export canvases).
+    setScopeSource(cref.current);
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const v = vref.current, c = cref.current;
@@ -199,7 +202,10 @@ function Preview() {
       if (ctx) drawFrame(ctx, v, c.width, c.height, cl.framing, s.project.burnIn ? s.project.captions : null, s.project.captionStyle, v.currentTime, cl);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      setScopeSource(null);
+    };
   }, []);
 
   const toggle = () => {

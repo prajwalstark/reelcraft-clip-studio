@@ -2,6 +2,7 @@ import { templateCaptionStyle, templateFrame } from "./templates";
 import { drawTemplateDecorations } from "./template-render";
 import { gradeOf, titleOf, videoFilter } from "./editing";
 import { lookRenderer, type GradeJob } from "./grading/gpu";
+import { tapGradedFrame } from "./grading/scopes";
 import { bakeCurves, curvesActive, gradeActive, primaryParams } from "./grading/primaries";
 import { getLook } from "./grading/library";
 // Browser-only frame compositor shared by preview and export.
@@ -72,6 +73,8 @@ export function drawFrame(
     // only — before template decorations, titles and captions, so text keeps exact colours.
     const job = clip ? gradeJob(clip) : null;
     if (job) lookRenderer()?.apply(ctx, job, l.dx, l.dy, l.dw, l.dh);
+    // Scopes read the graded video here — before decorations, titles and captions.
+    tapGradedFrame(ctx, l.dx, l.dy, l.dw, l.dh);
   }
   if (motion) drawTemplateDecorations(ctx, outW, outH, motion);
   if (clip) {
