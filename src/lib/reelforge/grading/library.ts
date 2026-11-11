@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { Clip } from "../core";
 import { lookGpuError, lookRenderer } from "./gpu";
 import { parseLookFile, type Look } from "./looks";
+import { gradeActive } from "./primaries";
 
 const DB = "reelcraft-looks";
 const STORE = "looks";
@@ -115,6 +116,8 @@ export function describeLook(l: Look) {
  * silently dropped from an exported file.
  */
 export function assertGradeReady(clip: Clip) {
+  if (clip.colorGrade && gradeActive(clip.colorGrade) && !lookRenderer())
+    throw new Error(lookGpuError() ?? "Colour grading can't be rendered in this browser.");
   const id = clip.grade?.lookId;
   if (!id || !(clip.grade!.intensity > 0)) return;
   if (!getLook(id))

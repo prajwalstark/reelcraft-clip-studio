@@ -9,6 +9,7 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 | Long video to shorts | Local file upload, duration-based segmentation, trim, split, duplicate, delete, selected/batch export |
 | Reframing | 9:16, 1:1, 16:9; fit/fill, zoom, focal position, safe-zone guide |
 | Color | Per-clip brightness, contrast, saturation, hue, blur; bypass and reset; shared preview/export compositor |
+| Colour wheels & curves | Resolve-style Lift / Gamma / Gain / Offset wheels with master sliders, temperature, tint, contrast with pivot, saturation; Custom (Y/R/G/B), Hue vs Hue, Hue vs Sat and Luma vs Sat curves; apply to all clips, reset, undo; same GPU pass as preview and export |
 | Looks (LUT & CDL) | Import `.cube` (1D/3D), `.3dl` and ASC CDL (`.cdl`/`.cc`/`.ccc`) — e.g. from DaVinci Resolve or Premiere Pro; per-clip look with intensity, apply to all clips, a looks library kept in this browser; GPU (WebGL2) grading of the video area only, identical in preview and export |
 | Audio | Per-clip volume, mute, fade in/out; fades measured in output seconds and scaled to fit short clips |
 | Speed | 0.5×, 1×, 1.5×, 2×; playback and export use the same speed; output duration and SRT timings adjust |
@@ -100,6 +101,18 @@ Verified in Chromium: load video → add caption → refresh restored the video 
 - **Library:** imported looks are kept in this browser (IndexedDB), separate from kept media, so clearing media never deletes looks. Projects store only which look and intensity a clip uses; on another browser the clip shows "Missing look" and exports are blocked until it's re-imported or set to None.
 
 Verified: the `.cube` and `.3dl` parsers matched **ffmpeg's `lut3d`** within 1/255 on 57,600 pixels using an asymmetric test LUT (confirming each format's data order); the GPU shader matched the CPU reference within 1/255 for 3D/1D LUTs, CDL and 50% intensity, with pixels outside the graded rectangle untouched; and in Chromium, a look imported through the UI and exported at 1080×1920 matched ffmpeg's rendering of the same frame within 6.4/255 mean (the codec/scaling baseline without a look was 5.9/255), versus 134.6/255 for the same export without the look.
+
+## Colour wheels and curves
+
+**Color → Colour wheels & curves** grades the selected clip, Resolve-style:
+
+- **Wheels:** Lift (shadows), Gamma (midtones), Gain (highlights) and Offset (everything). Drag the puck toward a hue (arrow keys nudge it; Shift for bigger steps); the slider under each wheel brightens or darkens that range. Pucks are luminance-neutral colour shifts; double-click a wheel, puck or slider to reset it.
+- **Temperature, Tint, Contrast (with Pivot), Saturation** (Rec.709 luma).
+- **Curves:** Custom — a master Y curve applied to every channel, then R, G and B curves; Hue vs Hue (rotate one hue), Hue vs Sat (saturate/desaturate one hue) and Luma vs Sat (e.g. clean colour out of shadows). Click to add up to 16 points, drag to shape, double-click or Delete to remove; tone curves keep their end points at 0 and 1, hue curves wrap around. Interpolation is monotone (no overshoot between points).
+- **Apply to all** copies the grade to every clip; **Reset** removes it. Edits are undoable; a grade returned to neutral is removed from the project.
+- **Order:** basic adjustments → wheels/temperature/contrast/saturation → curves → imported look (at its intensity). Everything runs in the one WebGL2 pass, over the video area only, identical in preview and both exporters; an export whose grade can't be rendered stops with a message.
+
+Verified: the GPU pass matched the CPU reference exactly (0/255) for wheels and sliders, within 1/255 for all curves, and within 1/255 for everything combined with a LUT at 60%, over 57,600 pixels each. In Chromium, a grade made through the UI (Gain puck dragged toward orange, Lift master −0.3, Saturation 130%, a Y-curve point clicked at 0.5 → 0.62) and exported at 1080×1920 matched the CPU reference on the same frame within 1.42/255 mean, while the grade itself changed that frame by 9.65/255. Scopes (waveform, vectorscope, histogram) are not built yet.
 
 ## Browser limitations and deferred features
 

@@ -13,6 +13,7 @@ import {
   titleOf,
 } from "@/lib/reelforge/editing";
 import { LooksPanel } from "./LooksPanel";
+import { ColorGradePanel } from "./ColorGradePanel";
 
 const field = "w-full rounded border bg-background p-2 text-xs";
 function Slider({
@@ -86,6 +87,7 @@ export function ColorPanel({ clip }: { clip: Clip }) {
     updateClip(clip.id, { color: { ...c, ...p } }, `color-${clip.id}`);
   return (
     <div className="space-y-4">
+      <ColorGradePanel clip={clip} />
       <LooksPanel clip={clip} />
       <p className="text-xs text-muted-foreground">
         Basic adjustments, applied before the look. Applied to the video in preview and export; text

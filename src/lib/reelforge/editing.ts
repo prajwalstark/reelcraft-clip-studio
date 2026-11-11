@@ -1,3 +1,4 @@
+import { readColorGrade } from "./grading/primaries";
 import { normalizeTemplate } from "./templates";
 import {
   ASPECTS,
@@ -212,7 +213,8 @@ export function readProject(value: unknown): Project {
     )
       throw new Error("Invalid clip or duplicate clip ID");
     ids.add(c.id);
-    const { template: rawTemplate, grade: rawGrade, ...rest } = c;
+    const { template: rawTemplate, grade: rawGrade, colorGrade: rawColor, ...rest } = c;
+    const colorGrade = readColorGrade(rawColor);
     const template = normalizeTemplate(rawTemplate);
     const grade =
       rawGrade && typeof rawGrade.lookId === "string" && rawGrade.lookId.length <= 100
@@ -222,6 +224,7 @@ export function readProject(value: unknown): Project {
       ...rest,
       ...(template ? { template } : {}),
       ...(grade ? { grade } : {}),
+      ...(colorGrade ? { colorGrade } : {}),
       speed: speedOf(c),
       color: colorOf(c),
       audio: audioOf(c),

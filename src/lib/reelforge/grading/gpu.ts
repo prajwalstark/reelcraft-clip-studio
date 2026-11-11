@@ -1,7 +1,17 @@
-// GPU application of looks (3D/1D LUTs, CDL) for the Shorts compositor — same pass for preview
-// and export. Uses WebGL2 (3D textures, half-float LUT storage with hardware trilinear
+// GPU colour grading for the Shorts compositor — primaries (wheels, contrast, saturation),
+// curves and an imported look (3D/1D LUT or CDL) in one pass, the same for preview and export. Uses WebGL2 (3D textures, half-float LUT storage with hardware trilinear
 // filtering). The CPU reference in looks.ts is what the shader is tested against.
 import type { Look, LookTransform } from "./looks";
+import { CURVE_ROWS, CURVE_SIZE, type PrimaryParams } from "./primaries";
+
+/** Everything one grading pass applies; any part may be absent. */
+export interface GradeJob {
+  primary?: PrimaryParams | null;
+  /** Baked curve table (bakeCurves) and a key identifying its contents. */
+  curves?: { table: Float32Array; key: string } | null;
+  look?: Look | null;
+  intensity?: number;
+}
 
 const VERTEX = `#version 300 es
 in vec2 position; out vec2 uv;
@@ -14,25 +24,65 @@ in vec2 uv; out vec4 color;
 uniform sampler2D image;
 uniform sampler3D lut3;
 uniform sampler2D lut1;
-uniform int mode;          // 1 = 3D LUT, 2 = 1D LUT, 3 = CDL
+uniform sampler2D curves;  // 7 rows × 256: Y, R, G, B, hue-vs-hue, hue-vs-sat, luma-vs-sat
+uniform int mode;          // 0 = no look, 1 = 3D LUT, 2 = 1D LUT, 3 = CDL
 uniform vec3 dmin; uniform vec3 dmax; uniform float size; uniform float intensity;
 uniform vec3 slope; uniform vec3 offs; uniform vec3 power; uniform float sat;
+uniform int hasPrimary; uniform vec3 wb; uniform vec3 pofs; uniform vec3 plift; uniform vec3 pgamma;
+uniform vec3 pgain; uniform float pcon; uniform float ppiv; uniform float psat;
+uniform int hasCurves;
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
 float tap(float u) { return (u * (size - 1.0) + 0.5) / size; }
+float crv(int row, float x) { return texture(curves, vec2((clamp(x, 0.0, 1.0) * 255.0 + 0.5) / 256.0, (float(row) + 0.5) / 7.0)).r; }
+vec3 rgb2hsv(vec3 c) {
+  float mx = max(c.r, max(c.g, c.b)); float mn = min(c.r, min(c.g, c.b)); float d = mx - mn; float h = 0.0;
+  if (d > 1e-6) {
+    if (mx == c.r) h = mod((c.g - c.b) / d, 6.0);
+    else if (mx == c.g) h = (c.b - c.r) / d + 2.0;
+    else h = (c.r - c.g) / d + 4.0;
+    h /= 6.0; if (h < 0.0) h += 1.0;
+  }
+  return vec3(h, mx > 1e-6 ? d / mx : 0.0, mx);
+}
+float hk(float n, vec3 hsv) { float k = mod(n + hsv.x * 6.0, 6.0); return hsv.z - hsv.z * hsv.y * max(0.0, min(min(k, 4.0 - k), 1.0)); }
+vec3 hsv2rgb(vec3 hsv) { return vec3(hk(5.0, hsv), hk(3.0, hsv), hk(1.0, hsv)); }
 void main() {
   vec4 s = texture(image, uv);
   vec3 c = s.rgb;
-  vec3 u = clamp((c - dmin) / (dmax - dmin), 0.0, 1.0);
-  vec3 g;
-  if (mode == 1) {
-    g = texture(lut3, vec3(tap(u.r), tap(u.g), tap(u.b))).rgb;
-  } else if (mode == 2) {
-    g = vec3(texture(lut1, vec2(tap(u.r), 0.5)).r, texture(lut1, vec2(tap(u.g), 0.5)).g, texture(lut1, vec2(tap(u.b), 0.5)).b);
-  } else {
-    vec3 sop = pow(clamp(c * slope + offs, 0.0, 1.0), power);
-    float l = dot(sop, vec3(0.2126, 0.7152, 0.0722));
-    g = l + sat * (sop - l);
+  if (hasPrimary == 1) {
+    c = c * wb + pofs;
+    c = c + plift * (1.0 - c);
+    c = pow(max(c * pgain, 0.0), 1.0 / pgamma);
+    c = (c - ppiv) * pcon + ppiv;
+    float l = dot(c, LUMA);
+    c = clamp(l + psat * (c - l), 0.0, 1.0);
   }
-  color = vec4(clamp(mix(c, g, intensity), 0.0, 1.0), s.a);
+  if (hasCurves == 1) {
+    c = vec3(crv(1, crv(0, c.r)), crv(2, crv(0, c.g)), crv(3, crv(0, c.b)));
+    vec3 hsv = rgb2hsv(c);
+    float shift = crv(4, hsv.x) - 0.5;
+    float satHue = crv(5, hsv.x) * 2.0;
+    float satLum = crv(6, dot(c, LUMA)) * 2.0;
+    hsv.x = fract(hsv.x + shift + 1.0);
+    hsv.y = clamp(hsv.y * satHue * satLum, 0.0, 1.0);
+    c = hsv2rgb(hsv);
+  }
+  c = clamp(c, 0.0, 1.0);
+  if (mode > 0) {
+    vec3 u = clamp((c - dmin) / (dmax - dmin), 0.0, 1.0);
+    vec3 g;
+    if (mode == 1) {
+      g = texture(lut3, vec3(tap(u.r), tap(u.g), tap(u.b))).rgb;
+    } else if (mode == 2) {
+      g = vec3(texture(lut1, vec2(tap(u.r), 0.5)).r, texture(lut1, vec2(tap(u.g), 0.5)).g, texture(lut1, vec2(tap(u.b), 0.5)).b);
+    } else {
+      vec3 sop = pow(clamp(c * slope + offs, 0.0, 1.0), power);
+      float l = dot(sop, LUMA);
+      g = l + sat * (sop - l);
+    }
+    c = clamp(mix(c, g, intensity), 0.0, 1.0);
+  }
+  color = vec4(c, s.a);
 }`;
 
 /** A 1D LUT longer than this is resampled before upload (texture width limits). */
@@ -68,6 +118,8 @@ export class LookRenderer {
   private image: WebGLTexture;
   private u: Record<string, WebGLUniformLocation | null> = {};
   private textures = new Map<string, { tex: WebGLTexture; target: number; size: number }>();
+  private curvesTex!: WebGLTexture;
+  private curvesKey = "";
 
   constructor() {
     const gl = this.canvas.getContext("webgl2", {
@@ -104,6 +156,7 @@ export class LookRenderer {
       "image",
       "lut3",
       "lut1",
+      "curves",
       "mode",
       "dmin",
       "dmax",
@@ -113,11 +166,43 @@ export class LookRenderer {
       "offs",
       "power",
       "sat",
+      "hasPrimary",
+      "wb",
+      "pofs",
+      "plift",
+      "pgamma",
+      "pgain",
+      "pcon",
+      "ppiv",
+      "psat",
+      "hasCurves",
     ])
       this.u[n] = gl.getUniformLocation(program, n);
     gl.uniform1i(this.u["image"]!, 0);
     gl.uniform1i(this.u["lut3"]!, 1);
     gl.uniform1i(this.u["lut1"]!, 2);
+    gl.uniform1i(this.u["curves"]!, 3);
+    this.curvesTex = gl.createTexture()!;
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.curvesTex);
+    for (const [k, v] of [
+      [gl.TEXTURE_MIN_FILTER, gl.LINEAR],
+      [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+      [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
+      [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE],
+    ] as const)
+      gl.texParameteri(gl.TEXTURE_2D, k, v);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.R16F,
+      CURVE_SIZE,
+      CURVE_ROWS.length,
+      0,
+      gl.RED,
+      gl.FLOAT,
+      new Float32Array(CURVE_SIZE * CURVE_ROWS.length),
+    );
     this.image = gl.createTexture()!;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.image);
@@ -206,18 +291,13 @@ export class LookRenderer {
   }
 
   /**
-   * Grade the rectangle (x, y, w, h) of `ctx`'s canvas in place with `look`. Pixels outside the
-   * rectangle (letterbox bars, later text layers) are untouched.
+   * Grade the rectangle (x, y, w, h) of `ctx`'s canvas in place: primaries, then curves, then the
+   * look at its intensity. Pixels outside the rectangle (letterbox bars, later text layers) are
+   * untouched. Does nothing when the job has nothing to apply.
    */
-  apply(
-    ctx: CanvasRenderingContext2D,
-    look: Look,
-    intensity: number,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-  ) {
+  apply(ctx: CanvasRenderingContext2D, job: GradeJob, x: number, y: number, w: number, h: number) {
+    const look = job.look && (job.intensity ?? 1) > 0 ? job.look : null;
+    if (!job.primary && !job.curves && !look) return;
     const gl = this.gl;
     const src = ctx.canvas;
     const W = src.width;
@@ -227,9 +307,11 @@ export class LookRenderer {
     const y0 = Math.max(0, Math.floor(y));
     const x1 = Math.min(W, Math.ceil(x + w));
     const y1 = Math.min(H, Math.ceil(y + h));
-    if (x1 <= x0 || y1 <= y0 || intensity <= 0) return;
+    if (x1 <= x0 || y1 <= y0) return;
     if (gl.isContextLost())
-      throw new Error("The GPU context for looks was lost. Reload the page and try again.");
+      throw new Error(
+        "The GPU context for colour grading was lost. Reload the page and try again.",
+      );
     if (this.canvas.width !== W || this.canvas.height !== H) {
       this.canvas.width = W;
       this.canvas.height = H;
@@ -241,31 +323,60 @@ export class LookRenderer {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src as TexImageSource);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-    const t = look.transform;
-    const lut = this.upload(look.id, t);
+
+    // Primaries
+    const p = job.primary;
+    gl.uniform1i(this.u["hasPrimary"]!, p ? 1 : 0);
+    if (p) {
+      gl.uniform3fv(this.u["wb"]!, p.wb);
+      gl.uniform3fv(this.u["pofs"]!, p.offset);
+      gl.uniform3fv(this.u["plift"]!, p.lift);
+      gl.uniform3fv(this.u["pgamma"]!, p.gamma);
+      gl.uniform3fv(this.u["pgain"]!, p.gain);
+      gl.uniform1f(this.u["pcon"]!, p.contrast);
+      gl.uniform1f(this.u["ppiv"]!, p.pivot);
+      gl.uniform1f(this.u["psat"]!, p.saturation);
+    }
+    // Curves (re-uploaded only when they change)
+    gl.uniform1i(this.u["hasCurves"]!, job.curves ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.curvesTex);
+    if (job.curves && job.curves.key !== this.curvesKey) {
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.R16F,
+        CURVE_SIZE,
+        CURVE_ROWS.length,
+        0,
+        gl.RED,
+        gl.FLOAT,
+        job.curves.table,
+      );
+      this.curvesKey = job.curves.key;
+    }
+    // Look
     const e3 = this.textures.get("__empty3d")!;
     const e1 = this.textures.get("__empty1d")!;
+    const t = look?.transform;
+    const lut = look && t ? this.upload(look.id, t) : null;
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_3D, t.kind === "lut3d" ? lut!.tex : e3.tex);
+    gl.bindTexture(gl.TEXTURE_3D, t?.kind === "lut3d" ? lut!.tex : e3.tex);
     gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, t.kind === "lut1d" ? lut!.tex : e1.tex);
-    gl.uniform1i(this.u["mode"]!, t.kind === "lut3d" ? 1 : t.kind === "lut1d" ? 2 : 3);
-    gl.uniform1f(this.u["intensity"]!, Math.min(1, intensity));
-    if (t.kind === "cdl") {
+    gl.bindTexture(gl.TEXTURE_2D, t?.kind === "lut1d" ? lut!.tex : e1.tex);
+    gl.uniform1i(this.u["mode"]!, !t ? 0 : t.kind === "lut3d" ? 1 : t.kind === "lut1d" ? 2 : 3);
+    gl.uniform1f(this.u["intensity"]!, Math.min(1, job.intensity ?? 1));
+    gl.uniform3fv(this.u["dmin"]!, t && t.kind !== "cdl" ? t.domainMin : [0, 0, 0]);
+    gl.uniform3fv(this.u["dmax"]!, t && t.kind !== "cdl" ? t.domainMax : [1, 1, 1]);
+    gl.uniform1f(this.u["size"]!, lut ? lut.size : 2);
+    if (t?.kind === "cdl") {
       gl.uniform3fv(this.u["slope"]!, t.slope);
       gl.uniform3fv(this.u["offs"]!, t.offset);
       gl.uniform3fv(this.u["power"]!, t.power);
       gl.uniform1f(this.u["sat"]!, t.saturation);
-      gl.uniform3fv(this.u["dmin"]!, [0, 0, 0]);
-      gl.uniform3fv(this.u["dmax"]!, [1, 1, 1]);
-      gl.uniform1f(this.u["size"]!, 2);
-    } else {
-      gl.uniform3fv(this.u["dmin"]!, t.domainMin);
-      gl.uniform3fv(this.u["dmax"]!, t.domainMax);
-      gl.uniform1f(this.u["size"]!, lut!.size);
     }
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    if (gl.getError() !== gl.NO_ERROR) throw new Error("Applying the look failed on the GPU.");
+    if (gl.getError() !== gl.NO_ERROR) throw new Error("Colour grading failed on the GPU.");
     // Copy back just the graded rectangle, 1:1 (a clip path + "copy" compositing corrupted
     // edge pixels in Chrome; a same-size source→destination draw is exact).
     ctx.save();
