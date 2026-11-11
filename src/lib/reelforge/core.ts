@@ -1,4 +1,5 @@
 // Pure ReelForge model + logic. No React, no DOM. Shared by preview, export and tests.
+import type { ColorGrade } from "./grading/primaries";
 
 import type { TemplateSettings } from "./templates";
 import type { ColorSettings, AudioSettings, TitleSettings, Marker, ExportSettings } from "./editing";
@@ -29,6 +30,8 @@ export interface Clip {
   template?: TemplateSettings;
   /** Imported look (LUT/CDL) applied to the video, by library id, mixed at `intensity`. */
   grade?: GradeSettings | undefined;
+  /** Resolve-style primaries (wheels, contrast, saturation…) and curves. */
+  colorGrade?: ColorGrade | undefined;
 }
 export interface GradeSettings {
   lookId: string | null;
