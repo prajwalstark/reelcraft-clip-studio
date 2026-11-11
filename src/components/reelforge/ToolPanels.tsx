@@ -12,6 +12,7 @@ import {
   speedOf,
   titleOf,
 } from "@/lib/reelforge/editing";
+import { LooksPanel } from "./LooksPanel";
 
 const field = "w-full rounded border bg-background p-2 text-xs";
 function Slider({
@@ -85,9 +86,10 @@ export function ColorPanel({ clip }: { clip: Clip }) {
     updateClip(clip.id, { color: { ...c, ...p } }, `color-${clip.id}`);
   return (
     <div className="space-y-4">
+      <LooksPanel clip={clip} />
       <p className="text-xs text-muted-foreground">
-        Basic browser color adjustments. Applied to the video in preview and export; text stays
-        sharp.
+        Basic adjustments, applied before the look. Applied to the video in preview and export; text
+        stays sharp.
       </p>
       <label className="flex gap-2 text-xs">
         <input

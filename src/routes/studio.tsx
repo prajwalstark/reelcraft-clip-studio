@@ -4,6 +4,7 @@ import { EmptyStage } from "@/components/reelforge/EmptyStage";
 import { Editor } from "@/components/reelforge/Editor";
 import { Toaster } from "@/components/ui/sonner";
 import { hydrate, restoreSource, sourceMissing, useStore } from "@/lib/reelforge/store";
+import { loadLooks } from "@/lib/reelforge/grading/library";
 
 export const Route = createFileRoute("/studio")({
   ssr: false,
@@ -34,6 +35,7 @@ function Studio() {
   useEffect(() => {
     hydrate();
     void restoreSource();
+    void loadLooks();
   }, []);
   const missing = useStore((s) => sourceMissing(s));
   const url = useStore((s) => s.rt.url);

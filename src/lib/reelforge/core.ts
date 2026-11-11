@@ -27,6 +27,12 @@ export interface Clip {
   speed?: number;
   overlay?: TitleSettings;
   template?: TemplateSettings;
+  /** Imported look (LUT/CDL) applied to the video, by library id, mixed at `intensity`. */
+  grade?: GradeSettings | undefined;
+}
+export interface GradeSettings {
+  lookId: string | null;
+  intensity: number; // 0..1
 }
 export interface CaptionWordTiming {
   text: string;

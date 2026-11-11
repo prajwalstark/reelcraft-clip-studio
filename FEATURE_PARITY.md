@@ -9,6 +9,7 @@ Reference: [storytold/filmcraft](https://github.com/storytold/filmcraft). This a
 | Long video to shorts | Local file upload, duration-based segmentation, trim, split, duplicate, delete, selected/batch export |
 | Reframing | 9:16, 1:1, 16:9; fit/fill, zoom, focal position, safe-zone guide |
 | Color | Per-clip brightness, contrast, saturation, hue, blur; bypass and reset; shared preview/export compositor |
+| Looks (LUT & CDL) | Import `.cube` (1D/3D), `.3dl` and ASC CDL (`.cdl`/`.cc`/`.ccc`) — e.g. from DaVinci Resolve or Premiere Pro; per-clip look with intensity, apply to all clips, a looks library kept in this browser; GPU (WebGL2) grading of the video area only, identical in preview and export |
 | Audio | Per-clip volume, mute, fade in/out; fades measured in output seconds and scaled to fit short clips |
 | Speed | 0.5×, 1×, 1.5×, 2×; playback and export use the same speed; output duration and SRT timings adjust |
 | Titles | One timed text overlay per clip, position, size, color and background; suitable for titles/lower thirds |
@@ -88,11 +89,23 @@ Both editors keep a copy of imported media in the browser's own storage (Indexed
 
 Verified in Chromium: load video → add caption → refresh restored the video (playable) with its clips and caption and no relink screen; Replace and Remove confirmed and worked; Remove → refresh showed the empty stage. In Sequence Studio, two imported files survived a refresh with no relink prompts; removing one removed its timeline clip after confirmation, and Undo restored both.
 
+## Looks: LUTs and CDL from Resolve or Premiere
+
+**Color → Looks** imports a look file and applies it to the selected clip, with an **Intensity** slider (0–100% blend with the original), **Apply to all clips** and **Delete look**.
+
+- **Formats:** `.cube` 3D LUTs (2³–65³) and 1D LUTs including `DOMAIN_MIN/MAX` and input ranges; `.3dl` (10–16-bit integer, with or without the mesh line); ASC CDL `.cdl`/`.cc`/`.ccc` (slope, offset, power, saturation with Rec.709 luma). Malformed files are rejected with a specific message.
+- **Getting looks out of other apps:** DaVinci Resolve — Color page, right-click a clip thumbnail → *Generate LUT* (33/65-point cube). Premiere Pro — Lumetri Color panel menu → *Export .cube*. Native Resolve `.drx` and Premiere `.prfpset` presets are proprietary and are not read.
+- **What carries over:** a LUT/CDL is a colour transform only; masks, qualifiers, noise reduction and blur in the original grade do not come across. LUTs are built for a footage type — most expect Rec.709 video; camera log LUTs only suit footage in that log format. Browser decoding and export are 8-bit, so very strong looks can band slightly more than in Resolve.
+- **Rendering:** a WebGL2 pass (3D LUT in a half-float 3D texture with trilinear filtering) grades only the video rectangle, after the basic adjustments and before templates, titles and captions — the same code path for preview, frame-exact export and real-time export. Without WebGL2 the panel says so, and exports that need a look stop with a message instead of dropping the grade.
+- **Library:** imported looks are kept in this browser (IndexedDB), separate from kept media, so clearing media never deletes looks. Projects store only which look and intensity a clip uses; on another browser the clip shows "Missing look" and exports are blocked until it's re-imported or set to None.
+
+Verified: the `.cube` and `.3dl` parsers matched **ffmpeg's `lut3d`** within 1/255 on 57,600 pixels using an asymmetric test LUT (confirming each format's data order); the GPU shader matched the CPU reference within 1/255 for 3D/1D LUTs, CDL and 50% intensity, with pixels outside the graded rectangle untouched; and in Chromium, a look imported through the UI and exported at 1080×1920 matched ffmpeg's rendering of the same frame within 6.4/255 mean (the codec/scaling baseline without a look was 5.9/255), versus 134.6/255 for the same export without the look.
+
 ## Browser limitations and deferred features
 
 **Export paths.** Where WebCodecs is available (Chrome, Edge, recent Safari and Firefox), exports are frame-exact: each output frame is decoded at its exact source timestamp, composited with the same code as the preview and encoded — the clip is never played, so no frames are dropped. MP4 (H.264 + AAC) is used when the browser can encode both, otherwise WebM (VP9 + Opus); the job shows which. Speed changes are rendered offline with a pitch-preserving time-stretch (WSOLA). How fast this runs depends on the device: with hardware video decode/encode it is typically faster than real time; on CPU-only machines it can take longer than the clip, but the result is still complete. If WebCodecs can't decode the source or encode the size at 720p/1080p, the export falls back to the original real-time capture: canvas + WebAudio + MediaRecorder exports run in real time. Keep the tab visible. Resolution is fixed by the selected preset, while frame rate/bitrate are targets and may vary under device load. Format selection prefers supported H.264 MP4, then browser-selected MP4, then WebM; the UI reports the available choice. MP4 alone does not guarantee H.264/AAC compatibility. Pitch preservation depends on the browser.
 
-Not implemented: AI highlight selection, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes, LUT import, professional grading scopes, noise reduction, a native Filmcraft/WASM engine, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
+Not implemented: AI highlight selection, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes, professional grading scopes, noise reduction, a native Filmcraft/WASM engine, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
 
 ## Validation
 

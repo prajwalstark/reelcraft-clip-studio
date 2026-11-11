@@ -9,6 +9,7 @@ import {
 import { downloadBlob, exportClip, type ExportFormat } from "./exporter";
 import { forgetMedia, loadMedia, pruneMedia, saveMedia, setRememberMedia } from "@/lib/media-vault";
 import { exportClipFast, fastExportSupported, FastExportUnavailable } from "./fast-export";
+import { assertGradeReady } from "./grading/library";
 
 export type Tab = "templates" | "clip" | "frame" | "captions" | "export" | "color" | "audio" | "titles" | "markers";
 export interface Job {
@@ -351,6 +352,8 @@ async function run() {
       patchJob(job.id, { status: "rendering", progress: 0 });
       try {
         const onProgress = (x: number) => patchJob(job.id, { progress: x });
+        // A clip's look must be renderable before we start, never silently dropped.
+        assertGradeReady(clip);
         const realtime = () => {
           patchJob(job.id, { path: "realtime", progress: 0 });
           return exportClip({
