@@ -33,6 +33,7 @@ import {
   trackOf,
   end,
 } from "./model";
+import { audible, propAt } from "./keyframes";
 export type Files = Map<string, File>;
 export const RATE = 48000;
 export function bounded<T>(promise: Promise<T>, signal: AbortSignal, ms = 30000): Promise<T> {
@@ -296,11 +297,11 @@ export class MediaSession {
         (c.fit === "cover" ? Math.max : Math.min)(
           canvas.width / a.width,
           canvas.height / a.height,
-        ) * c.scale;
+        ) * propAt(c, "scale", frame);
       const w = a.width * ratio,
         h = a.height * ratio;
-      const dx = canvas.width * c.x - w / 2;
-      const dy = canvas.height * c.y - h / 2;
+      const dx = canvas.width * propAt(c, "x", frame) - w / 2;
+      const dy = canvas.height * propAt(c, "y", frame) - h / 2;
       const job = gradeJobFor(c);
       const renderer = job ? lookRenderer() : null;
       if (job && renderer) {
@@ -340,7 +341,7 @@ export class MediaSession {
   }
   async audio(progress: (value: number) => void = () => {}): Promise<AudioBuffer | null> {
     const clips = this.s.items.filter(
-      (c) => assetOf(this.s, c).hasAudio && c.volume > 0 && !trackOf(this.s, c.track).muted,
+      (c) => assetOf(this.s, c).hasAudio && audible(c) && !trackOf(this.s, c.track).muted,
     );
     if (!clips.length) return null;
     const length = Math.ceil((totalFrames(this.s) / this.s.fps) * RATE),
@@ -393,7 +394,7 @@ export async function exportSequence(
   try {
     progress("Checking export support…");
     const needsAudio = s.items.some(
-      (c) => assetOf(s, c).hasAudio && c.volume > 0 && !trackOf(s, c.track).muted,
+      (c) => assetOf(s, c).hasAudio && audible(c) && !trackOf(s, c.track).muted,
     );
     const size = dimensions(s, res),
       quality = new Quality({ bitrate: res === 2160 ? 32e6 : res === 1080 ? 8e6 : 4e6 }),

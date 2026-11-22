@@ -2,6 +2,14 @@ import type { GradeSettings } from "@/lib/reelforge/core";
 import { readGradable } from "@/lib/reelforge/grading/job";
 import type { ColorGrade } from "@/lib/reelforge/grading/primaries";
 import { type Enhancement, validEnhancement } from "./enhancer";
+import {
+  type Keyframes,
+  normalizeKeys,
+  propAt,
+  readKeyframes,
+  scaleKeys,
+  splitKeys,
+} from "./keyframes";
 export const MAX_SECONDS = 180;
 export const TRACK_IDS = ["V1", "V2", "V3", "A1", "A2", "A3"] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
@@ -44,6 +52,8 @@ export interface Item {
   colorGrade?: ColorGrade | undefined;
   /** Imported look (LUT/CDL) by library id, mixed at `intensity`. */
   grade?: GradeSettings | undefined;
+  /** Keyframed position, scale, opacity and volume (offsets from `start`). */
+  keys?: Keyframes | undefined;
 }
 export interface Sequence {
   format: "reelcraft-sequence";
@@ -180,6 +190,8 @@ export function patchItem(s: Sequence, itemId: string, patch: Partial<Item>): Se
   c.y = Math.min(1, Math.max(0, c.y));
   c.fadeIn = Math.min(c.frames, Math.max(0, Math.round(c.fadeIn)));
   c.fadeOut = Math.min(c.frames - c.fadeIn, Math.max(0, Math.round(c.fadeOut)));
+  c.keys = normalizeKeys(c.keys);
+  if (!c.keys) delete c.keys;
   return cleanTransitions({ ...s, items: s.items.map((x) => (x.id === itemId ? c : x)) });
 }
 export function deleteItem(s: Sequence, itemId: string, ripple = false): Sequence {
@@ -228,16 +240,25 @@ export function splitItem(s: Sequence, itemId: string, frame: number): Sequence 
   assertEditable(s, c.track);
   const cut = Math.round(frame) - c.start;
   if (cut < 1 || cut >= c.frames) throw new Error("Move the playhead inside the selected clip.");
-  const { transition, ...rest } = c;
+  const { transition, keys, ...rest } = c;
+  // Each half keeps the keys that shape it, so the animation plays exactly as before.
+  const [headKeys, tailKeys] = splitKeys(keys, cut, c.frames);
   return cleanTransitions({
     ...s,
     items: s.items.flatMap((x) =>
       x.id !== c.id
         ? [x]
         : [
-            { ...rest, frames: cut, fadeOut: 0, fadeIn: Math.min(c.fadeIn, cut) },
             {
               ...rest,
+              ...(headKeys ? { keys: headKeys } : {}),
+              frames: cut,
+              fadeOut: 0,
+              fadeIn: Math.min(c.fadeIn, cut),
+            },
+            {
+              ...rest,
+              ...(tailKeys ? { keys: tailKeys } : {}),
               id: id(),
               start: c.start + cut,
               sourceIn: c.sourceIn + cut / s.fps,
@@ -304,7 +325,7 @@ export function levelAt(s: Sequence, c: Item, audio = false) {
     const age = frame - c.start,
       remaining = finish - frame;
     let level =
-      (audio ? c.volume : c.opacity) *
+      propAt(c, audio ? "volume" : "opacity", frame) *
       Math.min(1, c.fadeIn ? age / c.fadeIn : 1, c.fadeOut ? remaining / c.fadeOut : 1);
     if (incoming) level *= Math.min(1, age / incoming);
     if (next && frame >= next.start) level *= Math.max(0, remaining / outgoing);
@@ -350,6 +371,7 @@ export function changeFps(s: Sequence, fps: 24 | 30): Sequence {
       frames: Math.max(1, Math.floor(c.frames * ratio)),
       fadeIn: Math.floor(c.fadeIn * ratio),
       fadeOut: Math.floor(c.fadeOut * ratio),
+      ...(c.keys ? { keys: scaleKeys(c.keys, ratio) } : {}),
       ...(c.transition
         ? { transition: { ...c.transition, frames: Math.round(c.transition.frames * ratio) } }
         : {}),
@@ -446,9 +468,11 @@ export function parseSequence(value: unknown): Sequence {
   }
   const clean = structuredClone(s);
   // Grading fields are validated like the Shorts editor's; anything malformed is dropped.
+  // Keyframes likewise: malformed keys are dropped and values clamped to each property's range.
   clean.items = clean.items.map((c) => {
-    const { colorGrade: _cg, grade: _g, ...rest } = c;
-    return { ...rest, ...readGradable(c) };
+    const { colorGrade: _cg, grade: _g, keys: _k, ...rest } = c;
+    const keys = readKeyframes(c.keys);
+    return { ...rest, ...readGradable(c), ...(keys ? { keys } : {}) };
   });
   return cleanTransitions(clean);
 }
