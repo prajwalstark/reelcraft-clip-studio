@@ -335,6 +335,24 @@ export function levelAt(s: Sequence, c: Item, audio = false) {
 export function clipLevel(s: Sequence, c: Item, frame: number, audio = false) {
   return levelAt(s, c, audio)(frame);
 }
+/**
+ * Where a visual clip sits on a `width`×`height` canvas at `frame` (animated position and
+ * scale included). The compositor draws with this and the monitor overlay edits with it.
+ */
+export function clipRect(s: Sequence, c: Item, frame: number, width: number, height: number) {
+  const a = assetOf(s, c);
+  const ratio =
+    (c.fit === "cover" ? Math.max : Math.min)(width / a.width, height / a.height) *
+    propAt(c, "scale", frame);
+  const w = a.width * ratio,
+    h = a.height * ratio;
+  return {
+    x: width * propAt(c, "x", frame) - w / 2,
+    y: height * propAt(c, "y", frame) - h / 2,
+    w,
+    h,
+  };
+}
 export function visualItems(s: Sequence, frame: number) {
   return s.items
     .filter(

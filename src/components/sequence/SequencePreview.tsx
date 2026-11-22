@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { addScopeSource, tapGradedFrame } from "@/lib/reelforge/grading/scopes";
 import { type Sequence, totalFrames, dimensions } from "@/lib/sequence/model";
 import { MediaSession, bounded, type Files } from "@/lib/sequence/media";
+import { TransformOverlay, type TransformProps } from "./TransformOverlay";
 
 export function SequencePreview({
   sequence,
@@ -10,6 +11,9 @@ export function SequencePreview({
   onFrame,
   disabled,
   seekVersion,
+  selected,
+  onSelect,
+  onTransform,
 }: {
   sequence: Sequence;
   files: Files;
@@ -17,11 +21,18 @@ export function SequencePreview({
   onFrame: (frame: number) => void;
   disabled: boolean;
   seekVersion: number;
+  /** Direct manipulation in the monitor; omitted → view only. */
+  selected?: string | undefined;
+  onSelect?: TransformProps["onSelect"] | undefined;
+  onTransform?: TransformProps["onTransform"] | undefined;
 }) {
   const [quality, setQuality] = useState<360 | 720>(360);
   const latest = useRef(sequence);
   latest.current = sequence;
   const revision = useRef(0);
+  // While dragging in the monitor, show each finished draw even if a newer edit has arrived,
+  // so the picture follows the pointer instead of waiting for the drag to pause.
+  const live = useRef(false);
   const canvas = useRef<HTMLCanvasElement>(null),
     current = useRef(frame),
     setter = useRef(onFrame);
@@ -101,7 +112,7 @@ export function SequencePreview({
           .then(() => {
             if (
               !controller.signal.aborted &&
-              generation === revision.current &&
+              (generation === revision.current || live.current) &&
               (active || wanted === current.current)
             ) {
               const c = canvas.current;
@@ -185,6 +196,34 @@ export function SequencePreview({
     () => (canvas.current ? addScopeSource(canvas.current, () => refreshRef.current()) : undefined),
     [],
   );
+  // Where the canvas is drawn inside the screen (it is letterboxed), for the overlay.
+  const [box, setBox] = useState<{ left: number; top: number; width: number; height: number }>();
+  useLayoutEffect(() => {
+    const c = canvas.current;
+    if (!c) return;
+    const measure = () =>
+      setBox((old) => {
+        const next = {
+          left: c.offsetLeft,
+          top: c.offsetTop,
+          width: c.offsetWidth,
+          height: c.offsetHeight,
+        };
+        return old &&
+          old.left === next.left &&
+          old.top === next.top &&
+          old.width === next.width &&
+          old.height === next.height
+          ? old
+          : next;
+      });
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(c);
+    if (c.parentElement) observer.observe(c.parentElement);
+    return () => observer.disconnect();
+  }, []);
   return (
     <section className="seq-monitor">
       <div className="seq-panel-heading">
@@ -204,6 +243,24 @@ export function SequencePreview({
       </div>
       <div className="seq-screen">
         <canvas ref={canvas} aria-label="Sequence program preview" />
+        {onSelect && onTransform && box && box.width > 0 && sequence.items.length > 0 && (
+          <div
+            className="seq-xform-frame"
+            style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+          >
+            <TransformOverlay
+              sequence={sequence}
+              frame={frame}
+              selected={selected}
+              active={!disabled && !playing && !preparing}
+              onSelect={onSelect}
+              onTransform={onTransform}
+              onDragging={(on) => {
+                live.current = on;
+              }}
+            />
+          </div>
+        )}
         {!sequence.items.length && (
           <div className="seq-empty">
             Your sequence starts here<span>Import media, then drag it onto a track.</span>
