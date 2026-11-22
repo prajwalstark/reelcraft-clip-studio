@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, useId } from "react";
 import { RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -337,14 +337,43 @@ function Slider({
   );
 }
 
-/** Resolve-style primaries and curves for the selected clip. */
+/** Resolve-style primaries and curves for the selected Shorts clip. */
 export function ColorGradePanel({ clip }: { clip: Clip }) {
-  const g: ColorGrade = clip.colorGrade ?? NEUTRAL_GRADE;
+  return (
+    <GradeControls
+      value={clip.colorGrade}
+      onChange={(colorGrade) => updateClip(clip.id, { colorGrade }, `cgrade-${clip.id}`)}
+      onApplyAll={() => {
+        commit((p) => ({
+          ...p,
+          clips: p.clips.map((c) => ({ ...c, colorGrade: clip.colorGrade })),
+        }));
+        toast.success("Applied this grade to every clip.");
+      }}
+    />
+  );
+}
+
+/**
+ * Wheels, sliders and curves for any gradable clip. Controlled: `value` in, `onChange` out
+ * (undefined when the grade is back to neutral). Shared by the Shorts editor and Sequence Studio.
+ */
+export function GradeControls({
+  value,
+  onChange,
+  onApplyAll,
+}: {
+  value: ColorGrade | undefined;
+  onChange: (next: ColorGrade | undefined) => void;
+  onApplyAll?: (() => void) | undefined;
+}) {
+  const g: ColorGrade = value ?? NEUTRAL_GRADE;
+  const titleId = useId();
   const [tab, setTab] = useState("custom");
   const [channel, setChannel] = useState<CurveKind>("y");
   const set = (patch: Partial<ColorGrade>) => {
     const next: ColorGrade = { ...g, ...patch };
-    updateClip(clip.id, { colorGrade: gradeActive(next) ? next : undefined }, `cgrade-${clip.id}`);
+    onChange(gradeActive(next) ? next : undefined);
   };
   const setWheel = (k: WheelKind) => (w: Wheel) => set({ [k]: w } as Partial<ColorGrade>);
   const activeTab = CURVE_TABS.find((t) => t.id === tab)!;
@@ -353,33 +382,29 @@ export function ColorGradePanel({ clip }: { clip: Clip }) {
   const setCurve = (p: CurvePoints) => set({ curves: { ...g.curves, [kind]: p } });
 
   return (
-    <section aria-labelledby="grade-title" className="space-y-4 rounded-lg border p-3">
+    <section aria-labelledby={titleId} className="space-y-4 rounded-lg border p-3">
       <div className="flex items-center justify-between">
-        <h3 id="grade-title" className="text-xs font-semibold">
+        <h3 id={titleId} className="text-xs font-semibold">
           Colour wheels &amp; curves
         </h3>
         <div className="flex gap-1">
+          {onApplyAll && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-[11px]"
+              disabled={!value}
+              onClick={onApplyAll}
+            >
+              Apply to all
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
             className="h-7 px-2 text-[11px]"
-            disabled={!clip.colorGrade}
-            onClick={() => {
-              commit((p) => ({
-                ...p,
-                clips: p.clips.map((c) => ({ ...c, colorGrade: clip.colorGrade })),
-              }));
-              toast.success("Applied this grade to every clip.");
-            }}
-          >
-            Apply to all
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-[11px]"
-            disabled={!clip.colorGrade}
-            onClick={() => updateClip(clip.id, { colorGrade: undefined })}
+            disabled={!value}
+            onClick={() => onChange(undefined)}
           >
             <RotateCcw className="h-3 w-3" />
             Reset

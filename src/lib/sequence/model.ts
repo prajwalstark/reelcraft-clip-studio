@@ -1,3 +1,6 @@
+import type { GradeSettings } from "@/lib/reelforge/core";
+import { readGradable } from "@/lib/reelforge/grading/job";
+import type { ColorGrade } from "@/lib/reelforge/grading/primaries";
 import { type Enhancement, validEnhancement } from "./enhancer";
 export const MAX_SECONDS = 180;
 export const TRACK_IDS = ["V1", "V2", "V3", "A1", "A2", "A3"] as const;
@@ -37,6 +40,10 @@ export interface Item {
   fadeIn: number;
   fadeOut: number;
   transition?: { from: string; frames: number };
+  /** Resolve-style wheels/curves for this clip (shared with the Shorts editor). */
+  colorGrade?: ColorGrade | undefined;
+  /** Imported look (LUT/CDL) by library id, mixed at `intensity`. */
+  grade?: GradeSettings | undefined;
 }
 export interface Sequence {
   format: "reelcraft-sequence";
@@ -437,5 +444,11 @@ export function parseSequence(value: unknown): Sequence {
       throw new Error("Invalid transition.");
     itemIds.add(c.id);
   }
-  return cleanTransitions(structuredClone(s));
+  const clean = structuredClone(s);
+  // Grading fields are validated like the Shorts editor's; anything malformed is dropped.
+  clean.items = clean.items.map((c) => {
+    const { colorGrade: _cg, grade: _g, ...rest } = c;
+    return { ...rest, ...readGradable(c) };
+  });
+  return cleanTransitions(clean);
 }

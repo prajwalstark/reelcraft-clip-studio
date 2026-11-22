@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { addScopeSource, tapGradedFrame } from "@/lib/reelforge/grading/scopes";
 import { type Sequence, totalFrames, dimensions } from "@/lib/sequence/model";
 import { MediaSession, bounded, type Files } from "@/lib/sequence/media";
 
@@ -32,6 +33,8 @@ export function SequencePreview({
   const stopRef = useRef<() => void>(() => {}),
     playRef = useRef<() => Promise<void>>(async () => {});
   const redrawRef = useRef<() => void>(() => {});
+  // Draw the current frame again without stopping playback (e.g. when the scopes open).
+  const refreshRef = useRef<() => void>(() => {});
   useEffect(() => {
     const controller = new AbortController(),
       session = new MediaSession(latest.current, files, controller.signal);
@@ -60,6 +63,9 @@ export function SequencePreview({
       setPreparing(false);
     };
     stopRef.current = stop;
+    refreshRef.current = () => {
+      last = -1;
+    };
     redrawRef.current = () => {
       stop();
       last = -1;
@@ -102,7 +108,10 @@ export function SequencePreview({
               if (c) {
                 if (c.width !== scratch.width) c.width = scratch.width;
                 if (c.height !== scratch.height) c.height = scratch.height;
-                c.getContext("2d")?.drawImage(scratch, 0, 0);
+                const ctx = c.getContext("2d");
+                ctx?.drawImage(scratch, 0, 0);
+                // Feed the colour scopes (only while they're open; throttled inside).
+                if (ctx) tapGradedFrame(ctx, 0, 0, c.width, c.height);
               }
             }
           })
@@ -171,6 +180,11 @@ export function SequencePreview({
   useEffect(() => {
     if (disabled) stopRef.current();
   }, [disabled]);
+  // The program monitor is a scope source (exports never are).
+  useEffect(
+    () => (canvas.current ? addScopeSource(canvas.current, () => refreshRef.current()) : undefined),
+    [],
+  );
   return (
     <section className="seq-monitor">
       <div className="seq-panel-heading">

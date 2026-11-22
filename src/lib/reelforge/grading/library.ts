@@ -2,9 +2,8 @@
 // media, so clearing media never deletes looks. Projects store only the look id + intensity.
 import { useSyncExternalStore } from "react";
 import type { Clip } from "../core";
-import { lookGpuError, lookRenderer } from "./gpu";
 import { parseLookFile, type Look } from "./looks";
-import { gradeActive } from "./primaries";
+import { assertGradeRenderable } from "./job";
 
 const DB = "reelcraft-looks";
 const STORE = "looks";
@@ -116,16 +115,7 @@ export function describeLook(l: Look) {
  * silently dropped from an exported file.
  */
 export function assertGradeReady(clip: Clip) {
-  if (clip.colorGrade && gradeActive(clip.colorGrade) && !lookRenderer())
-    throw new Error(lookGpuError() ?? "Colour grading can't be rendered in this browser.");
-  const id = clip.grade?.lookId;
-  if (!id || !(clip.grade!.intensity > 0)) return;
-  if (!getLook(id))
-    throw new Error(
-      `"${clip.title}" uses a look that isn't in this browser's library. Re-import it, or set the look to None.`,
-    );
-  if (!lookRenderer())
-    throw new Error(lookGpuError() ?? "Looks can't be rendered in this browser.");
+  assertGradeRenderable(clip.title, clip);
 }
 
 /** Test hook. */

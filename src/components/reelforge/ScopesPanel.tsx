@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Activity, ChevronDown } from "lucide-react";
 import {
   SKIN_LINE_DEG,
@@ -207,13 +207,20 @@ function render(ctx: CanvasRenderingContext2D, mode: Mode, d: ScopeData) {
 }
 
 /** Live scopes of the graded preview frame (before titles/captions). */
-export function ScopesPanel() {
+export function ScopesPanel({
+  note = "Measures the graded video only — titles and captions are left out.",
+}: {
+  note?: string;
+}) {
+  const titleId = useId();
   const [open, setOpen] = useState(true);
   const [mode, setMode] = useState<Mode>("waveform");
   const [stats, setStats] = useState<{ crushed: number; clipped: number } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  // Last analysed frame, so switching scope type repaints at once (even while paused).
+  const lastData = useRef<ScopeData | null>(null);
 
   useEffect(() => {
     try {
@@ -237,7 +244,9 @@ export function ScopesPanel() {
 
   useEffect(() => {
     if (!open) return;
+    lastData.current = null;
     return subscribeScopes((d) => {
+      lastData.current = d;
       const ctx = canvas.current?.getContext("2d", { willReadFrequently: true });
       if (ctx) render(ctx, modeRef.current, d);
       setStats((s) =>
@@ -248,11 +257,16 @@ export function ScopesPanel() {
     });
   }, [open]);
 
+  useEffect(() => {
+    const ctx = canvas.current?.getContext("2d", { willReadFrequently: true });
+    if (open && ctx && lastData.current) render(ctx, mode, lastData.current);
+  }, [mode, open]);
+
   const pct = (v: number) => (v < 0.001 ? "0%" : `${(v * 100).toFixed(1)}%`);
   return (
-    <section aria-labelledby="scopes-title" className="rounded-lg border p-3">
+    <section aria-labelledby={titleId} className="rounded-lg border p-3">
       <button
-        id="scopes-title"
+        id={titleId}
         className="flex w-full items-center justify-between text-xs font-semibold"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
@@ -294,9 +308,7 @@ export function ScopesPanel() {
               Crushed to black {pct(stats.crushed)} · Clipped to white {pct(stats.clipped)}
             </p>
           )}
-          <p className="text-[10px] text-muted-foreground">
-            Measures the graded video only — titles and captions are left out.
-          </p>
+          <p className="text-[10px] text-muted-foreground">{note}</p>
         </div>
       )}
     </section>

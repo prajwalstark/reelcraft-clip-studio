@@ -3,7 +3,7 @@ import { drawTemplateDecorations } from "./template-render";
 import { gradeOf, titleOf, videoFilter } from "./editing";
 import { lookRenderer, type GradeJob } from "./grading/gpu";
 import { tapGradedFrame } from "./grading/scopes";
-import { bakeCurves, curvesActive, gradeActive, primaryParams } from "./grading/primaries";
+import { gradeJobFor } from "./grading/job";
 import { getLook } from "./grading/library";
 // Browser-only frame compositor shared by preview and export.
 import { activeCaptions, computeLayout, type Caption, type CaptionStyle, type Clip, type Framing } from "./core";
@@ -244,29 +244,5 @@ function drawAnimatedCaptions(
   ctx.textAlign = "center";
 }
 
-// Curve tables are baked once per distinct curve set (the preview redraws every frame).
-const bakedCurves = new Map<string, { table: Float32Array; key: string }>();
-function curveTable(curves: Parameters<typeof bakeCurves>[0]) {
-  const key = JSON.stringify(curves);
-  let hit = bakedCurves.get(key);
-  if (!hit) {
-    if (bakedCurves.size > 32) bakedCurves.clear();
-    hit = { table: bakeCurves(curves), key };
-    bakedCurves.set(key, hit);
-  }
-  return hit;
-}
-
 /** What the GPU grading pass should apply for a clip, or null when nothing is active. */
-export function gradeJob(clip: Clip): GradeJob | null {
-  const cg = clip.colorGrade && gradeActive(clip.colorGrade) ? clip.colorGrade : null;
-  const g = gradeOf(clip);
-  const look = g && g.intensity > 0 ? getLook(g.lookId) : null;
-  if (!cg && !look) return null;
-  return {
-    primary: cg ? primaryParams(cg) : null,
-    curves: cg && curvesActive(cg.curves) ? curveTable(cg.curves) : null,
-    look,
-    intensity: g?.intensity ?? 1,
-  };
-}
+export const gradeJob = (clip: Clip): GradeJob | null => gradeJobFor(clip);

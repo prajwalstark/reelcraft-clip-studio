@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { AlertTriangle, Palette, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import type { Clip } from "@/lib/reelforge/core";
-import { gradeOf } from "@/lib/reelforge/editing";
+import type { Clip, GradeSettings } from "@/lib/reelforge/core";
+import { lookRefOf } from "@/lib/reelforge/grading/job";
 import { lookGpuError } from "@/lib/reelforge/grading/gpu";
 import {
   deleteLook,
@@ -25,17 +25,51 @@ function pickLookFile(onFile: (f: File) => void) {
   i.click();
 }
 
-/** Imported looks (LUT / CDL) for the selected clip: choose, mix, import, share across clips. */
+/** Imported looks (LUT / CDL) for the selected Shorts clip. */
 export function LooksPanel({ clip }: { clip: Clip }) {
+  return (
+    <LookControls
+      value={clip.grade}
+      onChange={(grade) => updateClip(clip.id, { grade }, `grade-${clip.id}`)}
+      onApplyAll={(grade) => {
+        commit((p) => ({ ...p, clips: p.clips.map((c) => ({ ...c, grade: { ...grade } })) }));
+        toast.success("Applied this look to every clip.");
+      }}
+      onLookDeleted={(id) =>
+        commit((p) => ({
+          ...p,
+          clips: p.clips.map((c) => (c.grade?.lookId === id ? { ...c, grade: undefined } : c)),
+        }))
+      }
+    />
+  );
+}
+
+/**
+ * Choose, mix, import and share looks for any gradable clip. Controlled: `value` in,
+ * `onChange` out. `onLookDeleted` lets the host clear the look from its other clips.
+ */
+export function LookControls({
+  value,
+  onChange,
+  onApplyAll,
+  onLookDeleted,
+}: {
+  value: GradeSettings | undefined;
+  onChange: (next: GradeSettings | undefined) => void;
+  onApplyAll?: ((grade: GradeSettings) => void) | undefined;
+  onLookDeleted: (id: string) => void;
+}) {
   const looks = useLooks();
-  const grade = gradeOf(clip);
+  const grade = lookRefOf(value);
   const current = grade ? getLook(grade.lookId) : null;
   const missing = !!grade && !current;
   const [gpuError, setGpuError] = useState<string | null>(null);
   useEffect(() => setGpuError(lookGpuError()), []);
+  const titleId = useId();
 
   const setGrade = (lookId: string | null, intensity = grade?.intensity ?? 1) =>
-    updateClip(clip.id, { grade: lookId ? { lookId, intensity } : undefined }, `grade-${clip.id}`);
+    onChange(lookId ? { lookId, intensity } : undefined);
 
   const onImport = () =>
     pickLookFile(async (file) => {
@@ -51,9 +85,7 @@ export function LooksPanel({ clip }: { clip: Clip }) {
     });
 
   const applyToAll = () => {
-    if (!grade) return;
-    commit((p) => ({ ...p, clips: p.clips.map((c) => ({ ...c, grade: { ...grade } })) }));
-    toast.success("Applied this look to every clip.");
+    if (grade) onApplyAll?.(grade);
   };
 
   const removeFromLibrary = () => {
@@ -64,19 +96,16 @@ export function LooksPanel({ clip }: { clip: Clip }) {
       )
     )
       return;
-    commit((p) => ({
-      ...p,
-      clips: p.clips.map((c) => (c.grade?.lookId === current.id ? { ...c, grade: undefined } : c)),
-    }));
+    onLookDeleted(current.id);
     void deleteLook(current.id);
   };
 
   return (
     <section
-      aria-labelledby="looks-title"
+      aria-labelledby={titleId}
       className="space-y-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-3"
     >
-      <h3 id="looks-title" className="flex items-center gap-1.5 text-xs font-semibold">
+      <h3 id={titleId} className="flex items-center gap-1.5 text-xs font-semibold">
         <Palette className="h-3.5 w-3.5 text-primary" />
         Looks · LUT &amp; CDL
       </h3>
@@ -139,9 +168,11 @@ export function LooksPanel({ clip }: { clip: Clip }) {
           <Upload className="h-3.5 w-3.5" />
           Import look…
         </Button>
-        <Button size="sm" variant="secondary" disabled={!current} onClick={applyToAll}>
-          Apply to all clips
-        </Button>
+        {onApplyAll && (
+          <Button size="sm" variant="secondary" disabled={!current} onClick={applyToAll}>
+            Apply to all clips
+          </Button>
+        )}
         <Button size="sm" variant="ghost" disabled={!current} onClick={removeFromLibrary}>
           <Trash2 className="h-3.5 w-3.5" />
           Delete look
