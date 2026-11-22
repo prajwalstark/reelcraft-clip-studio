@@ -40,6 +40,20 @@ import {
   validEnhancement,
   type Enhancement,
 } from "@/lib/sequence/enhancer";
+import {
+  EASES,
+  type Ease,
+  type Prop,
+  adjacentKey,
+  clearAnimation,
+  isAnimated,
+  keyAt,
+  keyOffsets,
+  valueAt,
+  withEase,
+  withKey,
+  withoutKey,
+} from "@/lib/sequence/keyframes";
 import { SequencePreview } from "./SequencePreview";
 import "./sequence.css";
 const STORAGE = "reelcraft-sequence-v1";
@@ -56,8 +70,8 @@ function Numeric({
   value: number;
   onChange: (v: number) => void;
   step?: number;
-  min?: number;
-  max?: number;
+  min?: number | undefined;
+  max?: number | undefined;
 }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(Math.round(value * 1000) / 1000)), [value]);
@@ -80,6 +94,120 @@ function Numeric({
         }}
       />
     </label>
+  );
+}
+/**
+ * A numeric clip property that can be keyframed. Without keys it edits the clip's value; once
+ * the property has keys, it shows the animated value at the playhead and edits set a key there.
+ */
+function Keyed({
+  label,
+  prop,
+  clip,
+  frame,
+  unit = 100,
+  min,
+  max,
+  onPatch,
+  onSeek,
+}: {
+  label: string;
+  prop: Prop;
+  clip: Item;
+  frame: number;
+  /** Display multiplier (100 for percentages). */
+  unit?: number;
+  min?: number;
+  max?: number;
+  onPatch: (p: Partial<Item>) => void;
+  onSeek: (frame: number) => void;
+}) {
+  const offset = frame - clip.start;
+  const inside = offset >= 0 && offset < clip.frames;
+  const at = Math.min(clip.frames - 1, Math.max(0, offset));
+  const animated = isAnimated(clip, prop);
+  const value = animated ? valueAt(clip.keys?.[prop], clip[prop], at) : clip[prop];
+  const here = inside ? keyAt(clip, prop, offset) : undefined;
+  // Navigation only visits keys inside the clip; from outside it jumps to the nearest one.
+  const prev = adjacentKey(clip, prop, offset, -1);
+  const next = adjacentKey(clip, prop, offset, 1);
+  const name = label.replace(/ \(.*\)$/, "");
+  const outside = "Move the playhead over this clip to set a keyframe.";
+  return (
+    <div className={`seq-keyed ${animated ? "animated" : ""}`}>
+      <Numeric
+        label={label}
+        value={Math.round(value * unit * 1000) / 1000}
+        min={min}
+        max={max}
+        onChange={(v) => {
+          if (!animated) return onPatch({ [prop]: v / unit });
+          if (!inside) return void toast.error(outside);
+          onPatch({ keys: withKey(clip, prop, offset, v / unit) });
+        }}
+      />
+      <div className="seq-keyrow" role="group" aria-label={`${name} keyframes`}>
+        <button
+          type="button"
+          aria-label={`Previous ${name} keyframe`}
+          disabled={prev === undefined}
+          onClick={() => prev !== undefined && onSeek(clip.start + prev)}
+        >
+          ◀
+        </button>
+        <button
+          type="button"
+          className="seq-diamond"
+          aria-label={
+            here ? `Remove ${name} keyframe at playhead` : `Add ${name} keyframe at playhead`
+          }
+          aria-pressed={!!here}
+          title={inside ? undefined : outside}
+          disabled={!inside}
+          onClick={() =>
+            onPatch({
+              keys: here ? withoutKey(clip, prop, offset) : withKey(clip, prop, offset, value),
+            })
+          }
+        >
+          ◆
+        </button>
+        <button
+          type="button"
+          aria-label={`Next ${name} keyframe`}
+          disabled={next === undefined}
+          onClick={() => next !== undefined && onSeek(clip.start + next)}
+        >
+          ▶
+        </button>
+        {here && (
+          <select
+            aria-label={`${name} keyframe easing`}
+            value={here.ease ?? "linear"}
+            onChange={(e) =>
+              onPatch({ keys: withEase(clip, prop, offset, e.target.value as Ease) })
+            }
+          >
+            {EASES.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {animated && (
+          <button
+            type="button"
+            className="seq-keyclear"
+            aria-label={`Stop animating ${name}`}
+            title={`Remove all ${name} keyframes and keep the value at the playhead`}
+            onClick={() => onPatch(clearAnimation(clip, prop, at))}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 function Source({
@@ -806,45 +934,64 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                 min={0}
                 onChange={(v) => patch({ sourceIn: v })}
               />
-              <Numeric
+              <p className="seq-subtle seq-keyhint">
+                ◆ sets a keyframe at the playhead. Once a value has keyframes, editing it at the
+                playhead adds or updates one; ✕ stops animating it.
+              </p>
+              <Keyed
                 label="Volume (%)"
-                value={clip.volume * 100}
+                prop="volume"
+                clip={clip}
+                frame={frame}
                 min={0}
                 max={100}
-                onChange={(v) => patch({ volume: v / 100 })}
+                onPatch={patch}
+                onSeek={seek}
               />
               {videoTrack(clip.track) && (
                 <>
                   <div className="seq-field-pair">
-                    <Numeric
+                    <Keyed
                       label="Position X (%)"
-                      value={clip.x * 100}
+                      prop="x"
+                      clip={clip}
+                      frame={frame}
                       min={0}
                       max={100}
-                      onChange={(v) => patch({ x: v / 100 })}
+                      onPatch={patch}
+                      onSeek={seek}
                     />
-                    <Numeric
+                    <Keyed
                       label="Position Y (%)"
-                      value={clip.y * 100}
+                      prop="y"
+                      clip={clip}
+                      frame={frame}
                       min={0}
                       max={100}
-                      onChange={(v) => patch({ y: v / 100 })}
+                      onPatch={patch}
+                      onSeek={seek}
                     />
                   </div>
                   <div className="seq-field-pair">
-                    <Numeric
+                    <Keyed
                       label="Scale (%)"
-                      value={clip.scale * 100}
+                      prop="scale"
+                      clip={clip}
+                      frame={frame}
                       min={10}
                       max={300}
-                      onChange={(v) => patch({ scale: v / 100 })}
+                      onPatch={patch}
+                      onSeek={seek}
                     />
-                    <Numeric
+                    <Keyed
                       label="Opacity (%)"
-                      value={clip.opacity * 100}
+                      prop="opacity"
+                      clip={clip}
+                      frame={frame}
                       min={0}
                       max={100}
-                      onChange={(v) => patch({ opacity: v / 100 })}
+                      onPatch={patch}
+                      onSeek={seek}
                     />
                   </div>
                   <label className="seq-field">
@@ -931,7 +1078,7 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
             </fieldset>
           ) : (
             <div className="seq-inspector-empty">
-              Select a timeline clip to trim, position, mix and add fades.
+              Select a timeline clip to trim, position, animate, mix and add fades.
             </div>
           )}
         </aside>
@@ -1116,6 +1263,20 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                     >
                       <span>{assetOf(sequence, c).name}</span>
                       <Waveform asset={assetOf(sequence, c)} item={c} fps={sequence.fps} />
+                      {keyOffsets(c).map((f) => (
+                        <i
+                          key={f}
+                          className="seq-keymark"
+                          aria-hidden="true"
+                          style={{
+                            // Inset so markers on the first/last frame stay visible.
+                            left: Math.min(
+                              Math.max(4, (f / sequence.fps) * zoom),
+                              (c.frames / sequence.fps) * zoom - 6,
+                            ),
+                          }}
+                        />
+                      ))}
                       {!!transitionFrames(sequence, c) && (
                         <i
                           className="seq-crossfade"

@@ -127,6 +127,18 @@ The scopes measure the video **after grading and before templates, titles and ca
 
 Verified: unit tests check Rec.709 Cb/Cr geometry (complementary targets exactly opposite, correct order and quadrants, skin tones near the I-line), histogram/waveform/parade placement and crushed/clipped shares. In Chromium, a test pattern's yellow and blue bars read at about 93 % and 7 % on the waveform and land on the Yl and B targets on the vectorscope; adding a white caption over the frame left every scope value unchanged; and warming the Gain wheel raised the red mean (63 → 71) and lowered blue (93 → 88) on real footage.
 
+## Keyframes in Sequence Studio
+
+Select a clip and use the keyframe row under **Position X**, **Position Y**, **Scale**, **Opacity** or **Volume** in the inspector:
+
+- **◆** adds a keyframe at the playhead with the current value (lit when the playhead sits on one; click again to remove it). Once a property has keyframes its field is outlined and shows the animated value at the playhead; typing a new value adds or updates the keyframe there.
+- **◀ / ▶** jump the playhead to the previous/next keyframe of that property. **✕** stops animating it and keeps the value at the playhead.
+- **Easing** (shown when the playhead is on a keyframe) shapes the move to the next keyframe: **Linear**, **Ease in/out** (smooth start and stop) or **Hold** (jump at the next keyframe). Before the first keyframe and after the last, the value holds.
+- Keyframes are stored relative to the clip's start, so moving a clip moves its animation. **Split** gives each half exactly the curve it had; changing the frame rate re-times keyframes; trimming keeps keyframes outside the visible range so lengthening the clip again restores them. Diamonds on timeline clips mark keyed frames.
+- Animated opacity combines with fades and crossfades; animated volume is applied per audio sample, so ramps are smooth. Keyframes are saved in autosave and `.reelseq.json` (malformed keys are dropped and values clamped on load), and each edit is undoable.
+
+Verified in Chromium on a colour-bars clip at 50 % scale: Position X keyed 25 % → 75 % over 150 frames with Ease in/out, Opacity 40 % → 100 % linear, and Scale held at 50 % until a 30 % key. The program monitor measured X 0.302 at frame 30 (ease in/out predicts 0.302; linear would be 0.35), 0.500 at frame 75 and 0.750 at frame 149, opacity 0.52 and 0.70 at frames 30 and 75, and scale 50 % through frame 149 then 30 % at frame 150. Splitting at frame 75 and reloading the page gave the same values, and a 720p export measured the same X positions (0.250, 0.302, 0.500, 0.750) and opacities (0.40, 0.52, 0.70, 1.0) frame for frame.
+
 ## Grading in Sequence Studio
 
 Select a video or image clip in Sequence Studio and open **Colour** in the inspector. It has the same three tools as the Shorts editor, per clip:
@@ -142,7 +154,7 @@ Verified in Chromium with bars on V1 and footage at half size on V2: desaturatin
 
 **Export paths.** Where WebCodecs is available (Chrome, Edge, recent Safari and Firefox), exports are frame-exact: each output frame is decoded at its exact source timestamp, composited with the same code as the preview and encoded — the clip is never played, so no frames are dropped. MP4 (H.264 + AAC) is used when the browser can encode both, otherwise WebM (VP9 + Opus); the job shows which. Speed changes are rendered offline with a pitch-preserving time-stretch (WSOLA). How fast this runs depends on the device: with hardware video decode/encode it is typically faster than real time; on CPU-only machines it can take longer than the clip, but the result is still complete. If WebCodecs can't decode the source or encode the size at 720p/1080p, the export falls back to the original real-time capture: canvas + WebAudio + MediaRecorder exports run in real time. Keep the tab visible. Resolution is fixed by the selected preset, while frame rate/bitrate are targets and may vary under device load. Format selection prefers supported H.264 MP4, then browser-selected MP4, then WebM; the UI reports the available choice. MP4 alone does not guarantee H.264/AAC compatibility. Pitch preservation depends on the browser.
 
-Not implemented: AI highlight selection, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes, noise reduction, a native Filmcraft/WASM engine, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
+Not implemented: AI highlight selection, face tracking, multitrack video/audio, external music mixing, transitions between clips, keyframes (Sequence Studio has them), noise reduction, a native Filmcraft/WASM engine, or guaranteed Instagram-compatible encoding on every browser. No placeholder controls are presented for these features.
 
 ## Validation
 
