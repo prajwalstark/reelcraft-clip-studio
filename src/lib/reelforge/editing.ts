@@ -1,4 +1,5 @@
 import { readColorGrade } from "./grading/primaries";
+import { lookRefOf } from "./grading/job";
 import { normalizeTemplate } from "./templates";
 import {
   ASPECTS,
@@ -118,9 +119,7 @@ export function videoFilter(c: Clip, height: number) {
 }
 /** Normalised look settings, or null when the clip has no look. */
 export function gradeOf(c: Clip): GradeSettings | null {
-  const g = c.grade;
-  if (!g || typeof g.lookId !== "string" || !g.lookId) return null;
-  return { lookId: g.lookId, intensity: bounded(g.intensity, 1, 0, 1) };
+  return lookRefOf(c.grade);
 }
 export function settingsOf(s?: ExportSettings): ExportSettings {
   const resolution = s?.resolution === 720 ? 720 : s?.resolution === 2160 ? 2160 : 1080;

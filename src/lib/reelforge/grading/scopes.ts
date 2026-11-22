@@ -113,29 +113,57 @@ export function analyzeFrame(
 // ---------- live feed from the preview ----------
 type Listener = (d: ScopeData) => void;
 const listeners = new Set<Listener>();
-let target: HTMLCanvasElement | null = null;
+/** Preview canvases that feed the scopes, each with a way to ask it for a fresh frame. */
+const sources = new Map<HTMLCanvasElement, () => void>();
 let sampler: HTMLCanvasElement | null = null;
 let last = 0;
+let trailing: ReturnType<typeof setTimeout> | undefined;
 /** Analysis runs at most this often while scopes are open. */
 const INTERVAL_MS = 120;
 const SAMPLE_WIDTH = 256;
 
-/** The canvas whose frames feed the scopes (the editor preview). Exports never feed them. */
-export function setScopeSource(canvas: HTMLCanvasElement | null) {
-  target = canvas;
+/**
+ * Register a preview canvas whose frames feed the scopes (the Shorts preview, the Sequence
+ * program monitor). Export canvases are never registered. `refresh` asks the preview to draw
+ * its current frame again — previews that only draw on change use it so scopes opened while
+ * paused fill straight away. Returns an unregister function.
+ */
+export function addScopeSource(canvas: HTMLCanvasElement, refresh: () => void = () => {}) {
+  sources.set(canvas, refresh);
+  return () => {
+    sources.delete(canvas);
+  };
 }
 export const scopesWanted = () => listeners.size > 0;
 export function subscribeScopes(fn: Listener) {
   listeners.add(fn);
   last = 0;
+  sources.forEach((refresh) => refresh());
   return () => {
     listeners.delete(fn);
+    if (!listeners.size && trailing) {
+      clearTimeout(trailing);
+      trailing = undefined;
+    }
   };
+}
+
+function analyzeSample() {
+  trailing = undefined;
+  if (!sampler || !listeners.size) return;
+  last = performance.now();
+  const s = sampler.getContext("2d", { willReadFrequently: true });
+  if (!s) return;
+  const img = s.getImageData(0, 0, sampler.width, sampler.height);
+  const data = analyzeFrame(img.data, sampler.width, sampler.height);
+  listeners.forEach((f) => f(data));
 }
 
 /**
  * Called by the compositor right after the video is drawn and graded, before decorations,
- * titles and captions. Samples the video rectangle, downscaled, at a throttled rate.
+ * titles and captions. Copies the video rectangle, downscaled, on every call and analyses it at
+ * a throttled rate — with a trailing analysis so the last frame of a burst (a slider drag, a
+ * seek while paused) is always the one the scopes show.
  */
 export function tapGradedFrame(
   ctx: CanvasRenderingContext2D,
@@ -144,10 +172,7 @@ export function tapGradedFrame(
   w: number,
   h: number,
 ) {
-  if (ctx.canvas !== target || !listeners.size) return;
-  const now = performance.now();
-  if (now - last < INTERVAL_MS) return;
-  last = now;
+  if (!sources.has(ctx.canvas) || !listeners.size) return;
   const sx = Math.max(0, Math.floor(x));
   const sy = Math.max(0, Math.floor(y));
   const sw = Math.min(ctx.canvas.width, Math.ceil(x + w)) - sx;
@@ -164,7 +189,9 @@ export function tapGradedFrame(
   if (!s) return;
   s.clearRect(0, 0, outW, outH);
   s.drawImage(ctx.canvas, sx, sy, sw, sh, 0, 0, outW, outH);
-  const img = s.getImageData(0, 0, outW, outH);
-  const data = analyzeFrame(img.data, outW, outH);
-  listeners.forEach((f) => f(data));
+  const wait = INTERVAL_MS - (performance.now() - last);
+  if (wait <= 0) {
+    if (trailing) clearTimeout(trailing);
+    analyzeSample();
+  } else trailing ??= setTimeout(analyzeSample, wait);
 }

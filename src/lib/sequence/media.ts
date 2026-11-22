@@ -1,4 +1,6 @@
 import { FrameEnhancer, enhancementActive } from "./enhancer";
+import { lookRenderer } from "@/lib/reelforge/grading/gpu";
+import { assertGradeRenderable, gradeJobFor } from "@/lib/reelforge/grading/job";
 import {
   ALL_FORMATS,
   Input,
@@ -185,6 +187,8 @@ export class MediaSession {
   private iterators = new Map<string, AsyncGenerator<WrappedCanvas | null, void, unknown>>();
   private closed = false;
   private enhancer: FrameEnhancer | undefined;
+  /** Scratch layer for grading one clip before compositing it. */
+  private layer: HTMLCanvasElement | undefined;
   prepareEnhancement(width: number, height: number) {
     if (enhancementActive(this.s.enhancement)) {
       this.enhancer ??= new FrameEnhancer();
@@ -295,8 +299,32 @@ export class MediaSession {
         ) * c.scale;
       const w = a.width * ratio,
         h = a.height * ratio;
-      ctx.globalAlpha = clipLevel(s, c, frame);
-      ctx.drawImage(image, canvas.width * c.x - w / 2, canvas.height * c.y - h / 2, w, h);
+      const dx = canvas.width * c.x - w / 2;
+      const dy = canvas.height * c.y - h / 2;
+      const job = gradeJobFor(c);
+      const renderer = job ? lookRenderer() : null;
+      if (job && renderer) {
+        // Grade this clip alone on its own layer, then composite it with its opacity, so the
+        // grade never touches lower tracks showing through.
+        this.layer ??= document.createElement("canvas");
+        const layer = this.layer;
+        if (layer.width !== canvas.width || layer.height !== canvas.height) {
+          layer.width = canvas.width;
+          layer.height = canvas.height;
+        }
+        const lctx = layer.getContext("2d")!;
+        lctx.globalAlpha = 1;
+        lctx.imageSmoothingEnabled = true;
+        lctx.imageSmoothingQuality = "high";
+        lctx.clearRect(0, 0, layer.width, layer.height);
+        lctx.drawImage(image, dx, dy, w, h);
+        renderer.apply(lctx, job, dx, dy, w, h);
+        ctx.globalAlpha = clipLevel(s, c, frame);
+        ctx.drawImage(layer, 0, 0);
+      } else {
+        ctx.globalAlpha = clipLevel(s, c, frame);
+        ctx.drawImage(image, dx, dy, w, h);
+      }
       if (sequential && frame === end(c) - 1) {
         const iterator = this.iterators.get(c.id);
         if (iterator) await bounded(iterator.return(), this.signal);
@@ -358,6 +386,8 @@ export async function exportSequence(
   if (!frames) throw new Error("Add clips before exporting.");
   for (const c of s.items)
     if (!files.has(c.assetId)) throw new Error(`Relink ${assetOf(s, c).name} before exporting.`);
+  // A clip's grade must be renderable before we start — never silently dropped.
+  for (const c of s.items) assertGradeRenderable(assetOf(s, c).name, c);
   const session = new MediaSession(s, files, signal);
   let output: Output | undefined;
   try {

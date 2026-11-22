@@ -145,3 +145,33 @@ describe("removeAsset", () => {
     expect(removeAsset(s, "nope")).toBe(s);
   });
 });
+
+describe("per-clip grading data", () => {
+  it("keeps grades through edits and sanitises them when a project is loaded", () => {
+    let s = addItem(fixture(), "source", "V1", 0);
+    const id = s.items[0]!.id;
+    s = patchItem(s, id, {
+      colorGrade: {
+        lift: { x: 0, y: 0, master: 0 },
+        gamma: { x: 0, y: 0, master: 0 },
+        gain: { x: 0.5, y: 0, master: 0 },
+        offset: { x: 0, y: 0, master: 0 },
+        temperature: 0,
+        tint: 0,
+        contrast: 1,
+        pivot: 0.435,
+        saturation: 1,
+        curves: {},
+      },
+      grade: { lookId: "warm", intensity: 0.6 },
+    });
+    expect(s.items[0]!.colorGrade?.gain.x).toBe(0.5);
+    const raw = JSON.parse(JSON.stringify(s));
+    raw.items[0].grade = { lookId: 12 }; // malformed look reference
+    raw.items[0].colorGrade.saturation = 99; // out of range
+    const loaded = parseSequence(raw);
+    expect(loaded.items[0]!.grade).toBeUndefined();
+    expect(loaded.items[0]!.colorGrade?.saturation).toBe(2);
+    expect(loaded.items[0]!.colorGrade?.gain.x).toBe(0.5);
+  });
+});

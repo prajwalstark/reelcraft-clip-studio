@@ -1,5 +1,8 @@
 import { memo, useEffect, useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
+import { GradeControls } from "@/components/reelforge/ColorGradePanel";
+import { LookControls } from "@/components/reelforge/LooksPanel";
+import { ScopesPanel } from "@/components/reelforge/ScopesPanel";
 import {
   loadMedia,
   pruneMedia,
@@ -26,6 +29,7 @@ import {
   changeFps,
   snapFrame,
   videoTrack,
+  trackOf,
   assetOf,
   transitionFrames,
 } from "@/lib/sequence/model";
@@ -239,12 +243,17 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
   useEffect(() => {
     setFrame((f) => Math.min(f, Math.max(0, totalFrames(sequence) - 1)));
   }, [sequence]);
-  const commit = (fn: (s: Sequence) => Sequence) => {
+  // Rapid edits to the same control (e.g. dragging a colour wheel) share one undo step.
+  const lastCommit = useRef({ key: "", at: 0 });
+  const commit = (fn: (s: Sequence) => Sequence, key?: string) => {
     try {
       const old = seqRef.current,
         next = fn(old);
       if (next === old) return;
-      setUndo((h) => [...h.slice(-49), old]);
+      const now = Date.now();
+      const merge = !!key && key === lastCommit.current.key && now - lastCommit.current.at < 600;
+      lastCommit.current = { key: key ?? "", at: now };
+      if (!merge) setUndo((h) => [...h.slice(-49), old]);
       setRedo([]);
       seqRef.current = next;
       setSequence(next);
@@ -848,6 +857,54 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                       <option value="cover">Fill / crop</option>
                     </select>
                   </label>
+                  <details className="seq-colour" open>
+                    <summary>Colour</summary>
+                    <div className="seq-colour-body">
+                      <ScopesPanel note="Measures the program monitor (all tracks, after the Video Enhancer)." />
+                      <GradeControls
+                        value={clip.colorGrade}
+                        onChange={(colorGrade) =>
+                          commit((s) => patchItem(s, clip.id, { colorGrade }), `cgrade-${clip.id}`)
+                        }
+                        onApplyAll={() => {
+                          commit((s) => ({
+                            ...s,
+                            items: s.items.map((i) =>
+                              videoTrack(i.track) && !trackOf(s, i.track)?.locked
+                                ? { ...i, colorGrade: clip.colorGrade }
+                                : i,
+                            ),
+                          }));
+                          toast.success("Applied this grade to every unlocked video clip.");
+                        }}
+                      />
+                      <LookControls
+                        value={clip.grade}
+                        onChange={(grade) =>
+                          commit((s) => patchItem(s, clip.id, { grade }), `look-${clip.id}`)
+                        }
+                        onApplyAll={(grade) => {
+                          commit((s) => ({
+                            ...s,
+                            items: s.items.map((i) =>
+                              videoTrack(i.track) && !trackOf(s, i.track)?.locked
+                                ? { ...i, grade: { ...grade } }
+                                : i,
+                            ),
+                          }));
+                          toast.success("Applied this look to every unlocked video clip.");
+                        }}
+                        onLookDeleted={(id) =>
+                          commit((s) => ({
+                            ...s,
+                            items: s.items.map((i) =>
+                              i.grade?.lookId === id ? { ...i, grade: undefined } : i,
+                            ),
+                          }))
+                        }
+                      />
+                    </div>
+                  </details>
                 </>
               )}
               <div className="seq-field-pair">
