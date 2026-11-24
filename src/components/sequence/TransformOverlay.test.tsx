@@ -130,13 +130,48 @@ describe("TransformOverlay", () => {
     expect(onTransform.mock.calls[0]![2].scale).toBeCloseTo(0.25);
   });
 
+  it("rotates from the knob, snapping to 90° unless Alt is held", () => {
+    const s = seq();
+    const { onTransform } = setup(s, s.items[1]!.id);
+    const knob = document.querySelector('[data-handle="rotate"]')!;
+    // Centre of V2 on screen is (480, 90). Start straight above it, end straight to its right.
+    fireEvent.pointerDown(knob, pointer(480, 20));
+    fireEvent.pointerMove(knob, pointer(552, 92));
+    expect(onTransform.mock.calls[0]![2]).toEqual({ rotation: 90 });
+    fireEvent.pointerMove(knob, pointer(552, 92, { altKey: true }));
+    expect(onTransform.mock.calls[1]![2].rotation).toBeCloseTo(
+      90 + (Math.atan2(2, 72) * 180) / Math.PI,
+    );
+    fireEvent.pointerUp(knob, pointer(552, 92));
+    expect(new Set(onTransform.mock.calls.map((c) => c[3])).size).toBe(1);
+  });
+
+  it("crops from an edge in crop mode", () => {
+    const s = seq();
+    const { onTransform } = setup(s, s.items[1]!.id);
+    expect(document.querySelector('[data-handle="crop-left"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Crop" }));
+    expect(screen.getByRole("button", { name: "Done cropping" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    const left = document.querySelector('[data-handle="crop-left"]')!;
+    // V2 is 320 px wide on screen; 80 px inward is a 25 % crop.
+    fireEvent.pointerDown(left, pointer(320, 90));
+    fireEvent.pointerMove(left, pointer(400, 90));
+    expect(onTransform.mock.calls[0]![2].cropLeft).toBeCloseTo(0.25);
+  });
+
   it("nudges with the keyboard", () => {
     const s = seq();
     const { root, onTransform } = setup(s, s.items[1]!.id);
     fireEvent.keyDown(root, { key: "ArrowLeft" });
     fireEvent.keyDown(root, { key: "ArrowDown", shiftKey: true });
     fireEvent.keyDown(root, { key: "+" });
-    const [left, down, bigger] = onTransform.mock.calls.map((c) => c[2]);
+    fireEvent.keyDown(root, { key: "]", shiftKey: true });
+    fireEvent.keyDown(root, { key: "[" });
+    const [left, down, bigger, turned, back] = onTransform.mock.calls.map((c) => c[2]);
+    expect(turned).toEqual({ rotation: 15 });
+    expect(back).toEqual({ rotation: -1 });
     expect(left.x).toBeCloseTo(0.745);
     expect(down.y).toBeCloseTo(0.3);
     expect(bigger.scale).toBeCloseTo(0.51);

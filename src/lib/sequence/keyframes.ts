@@ -1,13 +1,24 @@
 // Keyframe animation for Sequence Studio clips.
 //
-// A clip can animate position, scale, opacity and volume. Keyframes are stored per property,
+// A clip can animate position, scale, rotation, crop, opacity and volume. Keyframes are stored per property,
 // at frame offsets from the clip's start, so moving a clip moves its animation with it.
 // A key's `ease` shapes the segment that leaves it (up to the next key), like the outgoing
 // interpolation in Premiere/Resolve. Before the first key the property holds the first key's
 // value, after the last key it holds the last one. Keys may sit outside the clip's range
 // (after a split or a trim) so the visible part animates exactly as before.
 
-export const ANIMATABLE = ["x", "y", "scale", "opacity", "volume"] as const;
+export const ANIMATABLE = [
+  "x",
+  "y",
+  "scale",
+  "rotation",
+  "cropLeft",
+  "cropRight",
+  "cropTop",
+  "cropBottom",
+  "opacity",
+  "volume",
+] as const;
 export type Prop = (typeof ANIMATABLE)[number];
 export type Ease = "linear" | "smooth" | "hold";
 export const EASES: { id: Ease; label: string }[] = [
@@ -23,11 +34,20 @@ export interface Keyframe {
   ease?: Ease;
 }
 export type Keyframes = Partial<Record<Prop, Keyframe[]>>;
+/** At least 10 % of the picture stays visible across each axis (left + right ≤ 0.9). */
+export const MAX_CROP = 0.9;
 /** Value range of each property (the same limits as the static fields). */
 export const RANGE: Record<Prop, readonly [number, number]> = {
   x: [0, 1],
   y: [0, 1],
   scale: [0.1, 3],
+  /** Degrees, clockwise. */
+  rotation: [-360, 360],
+  /** Share of the picture trimmed from each edge. */
+  cropLeft: [0, MAX_CROP],
+  cropRight: [0, MAX_CROP],
+  cropTop: [0, MAX_CROP],
+  cropBottom: [0, MAX_CROP],
   opacity: [0, 1],
   volume: [0, 1],
 };
@@ -44,8 +64,16 @@ interface Animated {
   scale: number;
   opacity: number;
   volume: number;
+  /** Optional: absent means 0 (older projects have none of these). */
+  rotation?: number | undefined;
+  cropLeft?: number | undefined;
+  cropRight?: number | undefined;
+  cropTop?: number | undefined;
+  cropBottom?: number | undefined;
   keys?: Keyframes | undefined;
 }
+/** The clip's static (unkeyed) value of a property. */
+const baseOf = (c: Animated, p: Prop) => c[p] ?? 0;
 
 const clampTo = (p: Prop, v: number) => Math.min(RANGE[p][1], Math.max(RANGE[p][0], v));
 const shape = (ease: Ease | undefined, t: number) =>
@@ -75,7 +103,7 @@ export const isAnimated = (c: Animated, p: Prop) => (c.keys?.[p]?.length ?? 0) >
 
 /** A clip property at a timeline frame (fractional frames are fine, e.g. for audio). */
 export const propAt = (c: Animated, p: Prop, frame: number) =>
-  valueAt(c.keys?.[p], c[p], frame - c.start);
+  valueAt(c.keys?.[p], baseOf(c, p), frame - c.start);
 
 /** Clip can make sound somewhere: a static volume above zero, or any key above zero. */
 export const audible = (c: Animated) =>
@@ -130,7 +158,7 @@ export function withEase(c: Animated, p: Prop, offset: number, ease: Ease) {
 export function clearAnimation(c: Animated, p: Prop, offset: number) {
   const { [p]: _gone, ...rest } = c.keys ?? {};
   return {
-    [p]: clampTo(p, valueAt(c.keys?.[p], c[p], offset)),
+    [p]: clampTo(p, valueAt(c.keys?.[p], baseOf(c, p), offset)),
     keys: normalizeKeys(rest),
   } as { keys: Keyframes | undefined } & Partial<Record<Prop, number>>;
 }

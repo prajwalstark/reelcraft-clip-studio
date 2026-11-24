@@ -720,3 +720,80 @@
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
+.seq-xform-full {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px dashed rgba(232, 236, 245, 0.55);
+  pointer-events: none;
+}
+.seq-xform-rotate {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  border-radius: 50%;
+  background: #0b0d12;
+  border: 2px solid var(--sq-accent);
+  cursor: grab;
+}
+.seq-xform-rotate::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -13px;
+  width: 1px;
+  height: 11px;
+  background: var(--sq-accent);
+}
+.seq-xform-crop {
+  position: absolute;
+  background: #fff;
+  border: 1px solid #0b0d12;
+  border-radius: 2px;
+}
+.seq-xform-crop.left,
+.seq-xform-crop.right {
+  top: 50%;
+  width: 6px;
+  height: 26px;
+  margin-top: -13px;
+  cursor: ew-resize;
+}
+.seq-xform-crop.left {
+  left: -4px;
+}
+.seq-xform-crop.right {
+  right: -4px;
+}
+.seq-xform-crop.top,
+.seq-xform-crop.bottom {
+  left: 50%;
+  width: 26px;
+  height: 6px;
+  margin-left: -13px;
+  cursor: ns-resize;
+}
+.seq-xform-crop.top {
+  top: -4px;
+}
+.seq-xform-crop.bottom {
+  bottom: -4px;
+}
+.seq-xform-box.cropping {
+  border-color: #fff;
+}
+.sequence-studio .seq-xform-mode {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 3px 9px;
+  font-size: 11px;
+  background: rgba(7, 8, 11, 0.8);
+}
+.sequence-studio .seq-xform-mode[aria-pressed="true"] {
+  color: #0b0d12;
+  background: var(--sq-accent);
+  border-color: var(--sq-accent);
+}
