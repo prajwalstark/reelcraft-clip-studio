@@ -18,6 +18,22 @@ export const FONTS: { id: FontId; label: string; family: string }[] = [
   { id: "impact", label: "Impact", family: "Impact, 'Arial Black', 'Helvetica Neue', sans-serif" },
 ];
 export type Align = "left" | "center" | "right";
+export type AnimType = "fade" | "rise" | "slide" | "pop" | "typewriter" | "words";
+export const ANIMS: { id: AnimType; label: string }[] = [
+  { id: "fade", label: "Fade" },
+  { id: "rise", label: "Rise" },
+  { id: "slide", label: "Slide" },
+  { id: "pop", label: "Pop" },
+  { id: "typewriter", label: "Typewriter" },
+  { id: "words", label: "Word by word" },
+];
+/** An entrance or exit; the exit plays the same motion in reverse. */
+export interface TitleAnim {
+  type: AnimType;
+  /** Seconds. */
+  duration: number;
+}
+export const ANIM_SECONDS = [0.1, 5] as const;
 export interface Title {
   text: string;
   font: FontId;
@@ -36,6 +52,9 @@ export interface Title {
   /** Box behind the text, or null for none. */
   background: string | null;
   backgroundOpacity: number;
+  /** Entrance at the clip's start / exit at its end (absent = none). */
+  animIn?: TitleAnim | undefined;
+  animOut?: TitleAnim | undefined;
 }
 export const MAX_TEXT = 500;
 export const LIMITS = {
@@ -69,7 +88,13 @@ export const PRESETS: {
   {
     id: "big",
     label: "Big title",
-    title: { size: 0.14, weight: 800, shadow: true },
+    title: {
+      size: 0.14,
+      weight: 800,
+      shadow: true,
+      animIn: { type: "rise", duration: 0.6 },
+      animOut: { type: "fade", duration: 0.4 },
+    },
     place: { x: 0.5, y: 0.5 },
   },
   {
@@ -82,13 +107,23 @@ export const PRESETS: {
       shadow: false,
       background: "#0b0d12",
       backgroundOpacity: 0.75,
+      animIn: { type: "slide", duration: 0.5 },
+      animOut: { type: "fade", duration: 0.4 },
     },
     place: { x: 0.3, y: 0.8 },
   },
   {
     id: "subtitle",
     label: "Subtitle",
-    title: { size: 0.05, weight: 700, outline: 0.12, outlineColor: "#000000", shadow: false },
+    title: {
+      size: 0.05,
+      weight: 700,
+      outline: 0.12,
+      outlineColor: "#000000",
+      shadow: false,
+      animIn: { type: "words", duration: 0.8 },
+      animOut: { type: "fade", duration: 0.3 },
+    },
     place: { x: 0.5, y: 0.88 },
   },
   {
@@ -102,6 +137,8 @@ export const PRESETS: {
       shadow: false,
       background: "#b7f26a",
       backgroundOpacity: 1,
+      animIn: { type: "pop", duration: 0.4 },
+      animOut: { type: "pop", duration: 0.3 },
     },
     place: { x: 0.18, y: 0.12 },
   },
@@ -149,6 +186,86 @@ export function readTitle(value: unknown): Title | null {
         ? v["background"].toLowerCase()
         : null,
     backgroundOpacity: num("backgroundOpacity", DEFAULT_TITLE.backgroundOpacity),
+    ...anim("animIn", v["animIn"]),
+    ...anim("animOut", v["animOut"]),
+  };
+}
+function anim(key: "animIn" | "animOut", value: unknown): Partial<Title> {
+  if (!value || typeof value !== "object") return {};
+  const a = value as Record<string, unknown>;
+  if (!ANIMS.some((x) => x.id === a["type"])) return {};
+  const d = a["duration"];
+  const duration = typeof d === "number" && Number.isFinite(d) ? clamp(d, ANIM_SECONDS) : 0.5;
+  return { [key]: { type: a["type"] as AnimType, duration } };
+}
+
+// ---------- animation ----------
+/** What an entrance/exit does to a title at one frame. */
+export interface AnimState {
+  /** Multiplies the clip's opacity. */
+  alpha: number;
+  /** Offset in ems (font sizes), in the title's own (rotated) axes. */
+  dx: number;
+  dy: number;
+  scale: number;
+  /** Partial text: how many characters, or how far through the words (fractional). */
+  reveal?: Reveal | undefined;
+}
+export interface Reveal {
+  mode: "chars" | "words";
+  progress: number;
+}
+const IDLE: AnimState = { alpha: 1, dx: 0, dy: 0, scale: 1 };
+const easeOut = (p: number) => 1 - (1 - p) ** 3;
+const backOut = (p: number) => {
+  const c1 = 1.70158,
+    c3 = c1 + 1;
+  return 1 + c3 * (p - 1) ** 3 + c1 * (p - 1) ** 2;
+};
+export const charCount = (t: Title) => t.text.replace(/\n/g, "").length;
+export const wordCount = (t: Title) => t.text.match(/\S+/g)?.length ?? 0;
+
+/** One animation at progress `p` (0 = hidden, 1 = settled). */
+function motion(t: Title, a: TitleAnim, p: number): AnimState {
+  const e = easeOut(p);
+  switch (a.type) {
+    case "fade":
+      return { ...IDLE, alpha: e };
+    case "rise":
+      return { ...IDLE, alpha: e, dy: (1 - e) * 0.6 };
+    case "slide":
+      return { ...IDLE, alpha: e, dx: -(1 - e) * 1.5 };
+    case "pop":
+      return { ...IDLE, alpha: Math.min(1, p * 2.5), scale: 0.6 + 0.4 * backOut(p) };
+    case "typewriter":
+      return { ...IDLE, reveal: { mode: "chars", progress: Math.floor(p * charCount(t)) } };
+    case "words":
+      return { ...IDLE, reveal: { mode: "words", progress: p * wordCount(t) } };
+  }
+}
+
+/**
+ * The title's animation state `offset` frames into a clip `frames` long. Entrance and exit
+ * share the clip when they'd overlap (each is shortened in proportion).
+ */
+export function titleAnimAt(t: Title, offset: number, frames: number, fps: number): AnimState {
+  let dIn = t.animIn ? t.animIn.duration * fps : 0,
+    dOut = t.animOut ? t.animOut.duration * fps : 0;
+  if (dIn + dOut > frames && dIn + dOut > 0) {
+    const k = frames / (dIn + dOut);
+    dIn *= k;
+    dOut *= k;
+  }
+  const pIn = t.animIn && dIn > 0 ? Math.min(1, Math.max(0, offset / dIn)) : 1;
+  const pOut = t.animOut && dOut > 0 ? Math.min(1, Math.max(0, (frames - 1 - offset) / dOut)) : 1;
+  const a = pIn < 1 ? motion(t, t.animIn!, pIn) : IDLE;
+  const b = pOut < 1 ? motion(t, t.animOut!, pOut) : IDLE;
+  return {
+    alpha: a.alpha * b.alpha,
+    dx: a.dx + b.dx,
+    dy: a.dy + b.dy,
+    scale: a.scale * b.scale,
+    reveal: a.reveal ?? b.reveal,
   };
 }
 
@@ -228,9 +345,14 @@ const rgba = (hex: string, a: number) =>
  * Render a title for a frame `height` pixels tall (transparent outside the text and its box).
  * Pass the height it will be drawn at — e.g. frame height × clip scale — so text stays sharp.
  */
-export function renderTitle(t: Title, height: number): OffscreenCanvas | HTMLCanvasElement {
+export function renderTitle(
+  t: Title,
+  height: number,
+  reveal?: Reveal,
+): OffscreenCanvas | HTMLCanvasElement {
   const h = Math.max(1, Math.round(height));
-  const key = `${h}|${JSON.stringify(t)}`;
+  const part = reveal ? `${reveal.mode}:${Math.round(reveal.progress * 24) / 24}` : "";
+  const key = `${h}|${part}|${JSON.stringify(t)}`;
   const hit = renders.get(key);
   if (hit) return hit;
   const L = titleLayout(t, h);
@@ -264,20 +386,52 @@ export function renderTitle(t: Title, height: number): OffscreenCanvas | HTMLCan
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
   };
-  L.lines.forEach((line, i) => {
-    const y = L.margin + L.lineH * (i + 0.5);
+  const draw = (text: string, x: number, y: number) => {
     if (t.outline > 0) {
       if (t.shadow) shadow();
       ctx.strokeStyle = t.outlineColor;
       ctx.lineWidth = t.outline * L.fontPx * 2; // half of the stroke sits outside the glyph
-      ctx.strokeText(line.text, x, y);
+      ctx.strokeText(text, x, y);
       plain();
     } else if (t.shadow) shadow();
     ctx.fillStyle = t.color;
-    ctx.fillText(line.text, x, y);
+    ctx.fillText(text, x, y);
     plain();
-  });
-  if (renders.size > 40) renders.clear();
+  };
+  if (!reveal) {
+    L.lines.forEach((line, i) => draw(line.text, x, L.margin + L.lineH * (i + 0.5)));
+  } else {
+    // Partial text keeps the final layout: each piece is drawn where it sits in the full line,
+    // so nothing shifts while the text appears.
+    ctx.textAlign = "left";
+    let chars = 0,
+      word = 0;
+    L.lines.forEach((line, i) => {
+      const y = L.margin + L.lineH * (i + 0.5);
+      const start =
+        t.align === "left"
+          ? L.margin
+          : t.align === "right"
+            ? W - L.margin - line.width
+            : W / 2 - line.width / 2;
+      if (reveal.mode === "chars") {
+        const n = Math.max(0, Math.min(line.text.length, reveal.progress - chars));
+        if (n > 0) draw(line.text.slice(0, n), start, y);
+        chars += line.text.length;
+        return;
+      }
+      for (const m of line.text.matchAll(/\S+/g)) {
+        const local = Math.max(0, Math.min(1, reveal.progress - word++));
+        if (local <= 0) continue;
+        const e = easeOut(local);
+        ctx.globalAlpha = e;
+        const at = start + ctx.measureText(line.text.slice(0, m.index)).width;
+        draw(m[0], at, y + (1 - e) * 0.35 * L.fontPx);
+      }
+      ctx.globalAlpha = 1;
+    });
+  }
+  if (renders.size > 120) renders.clear();
   renders.set(key, canvas);
   return canvas;
 }

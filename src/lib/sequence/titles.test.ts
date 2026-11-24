@@ -12,7 +12,17 @@ import {
   visualItems,
   type Sequence,
 } from "./model";
-import { DEFAULT_TITLE, PRESETS, readTitle, titleLayout, titleName } from "./titles";
+import {
+  type AnimType,
+  DEFAULT_TITLE,
+  PRESETS,
+  charCount,
+  readTitle,
+  titleAnimAt,
+  titleLayout,
+  titleName,
+  wordCount,
+} from "./titles";
 
 function withVideo(): Sequence {
   const s = fresh();
@@ -151,5 +161,88 @@ describe("title clips", () => {
     raw.items[1].title = DEFAULT_TITLE;
     raw.items[1].track = "A2";
     expect(() => parseSequence(raw)).toThrow();
+  });
+});
+
+describe("title animations", () => {
+  const base = { ...DEFAULT_TITLE, text: "Hello big world" };
+  const at = (t: typeof base, offset: number, frames = 150) => titleAnimAt(t, offset, frames, 30);
+  it("enter over their duration and exit in reverse at the end", () => {
+    const t = {
+      ...base,
+      animIn: { type: "fade" as const, duration: 1 },
+      animOut: { type: "fade" as const, duration: 0.5 },
+    };
+    expect(at(t, 0).alpha).toBe(0);
+    expect(at(t, 15).alpha).toBeCloseTo(1 - 0.5 ** 3); // ease-out, half way
+    expect(at(t, 30).alpha).toBe(1);
+    expect(at(t, 100).alpha).toBe(1);
+    expect(at(t, 149).alpha).toBe(0); // last frame: gone
+    expect(at(t, 149 - 15).alpha).toBe(1); // exit starts 0.5 s before the end
+  });
+  it("share a clip too short for both", () => {
+    const t = {
+      ...base,
+      animIn: { type: "fade" as const, duration: 2 },
+      animOut: { type: "fade" as const, duration: 2 },
+    };
+    // 30-frame clip: each gets 15 frames, meeting in the middle.
+    expect(at(t, 0, 30).alpha).toBe(0);
+    expect(at(t, 15, 30).alpha).toBeGreaterThan(0.99);
+    expect(at(t, 7, 30).alpha).toBeLessThan(0.99);
+    expect(at(t, 29, 30).alpha).toBe(0);
+  });
+  it("move, scale and reveal as described", () => {
+    const run = (type: AnimType, offset: number) =>
+      at({ ...base, animIn: { type, duration: 1 } }, offset);
+    expect(run("rise", 0)).toMatchObject({ alpha: 0, dy: 0.6, dx: 0 });
+    expect(run("slide", 0).dx).toBe(-1.5);
+    expect(run("rise", 30)).toMatchObject({ alpha: 1, dy: 0 });
+    expect(run("pop", 0).scale).toBeCloseTo(0.6);
+    // Pop overshoots past 100 % before settling.
+    expect(Math.max(...Array.from({ length: 30 }, (_, f) => run("pop", f).scale))).toBeGreaterThan(
+      1,
+    );
+    expect(run("typewriter", 0).reveal).toEqual({ mode: "chars", progress: 0 });
+    expect(run("typewriter", 15).reveal).toEqual({ mode: "chars", progress: 7 }); // 15 characters × ½, rounded down
+    expect(run("typewriter", 30).reveal).toBeUndefined(); // settled: full text
+    expect(run("words", 10).reveal).toEqual({ mode: "words", progress: 1 }); // 3 words × ⅓
+    expect(charCount({ ...base, text: "ab\ncd" })).toBe(4);
+    expect(wordCount({ ...base, text: "  one\ntwo  three " })).toBe(3);
+  });
+  it("an exit typewriter un-types from the end", () => {
+    const t = { ...base, animOut: { type: "typewriter" as const, duration: 1 } };
+    expect(at(t, 149).reveal).toEqual({ mode: "chars", progress: 0 });
+    expect(at(t, 149 - 15).reveal).toEqual({ mode: "chars", progress: 7 });
+  });
+  it("are validated and clamped when read", () => {
+    const t = readTitle({
+      ...base,
+      animIn: { type: "words", duration: 99 },
+      animOut: { type: "spin", duration: 1 },
+    })!;
+    expect(t.animIn).toEqual({ type: "words", duration: 5 });
+    expect(t.animOut).toBeUndefined();
+    expect(readTitle({ ...base, animIn: { type: "fade" } })!.animIn).toEqual({
+      type: "fade",
+      duration: 0.5,
+    });
+  });
+  it("a split keeps the entrance on the first half and the exit on the second", () => {
+    let s = addTitle(withVideo(), 0, {
+      title: { animIn: { type: "rise", duration: 0.5 }, animOut: { type: "fade", duration: 0.5 } },
+    });
+    s = splitItem(s, s.items[1]!.id, 60);
+    const [head, tail] = s.items.slice(1);
+    expect(head!.title!.animIn?.type).toBe("rise");
+    expect(head!.title!.animOut).toBeUndefined();
+    expect(tail!.title!.animIn).toBeUndefined();
+    expect(tail!.title!.animOut?.type).toBe("fade");
+  });
+  it("presets bring their animations; old titles without them still load", () => {
+    expect(PRESETS.every((p) => p.title.animIn)).toBe(true);
+    const s = addTitle(withVideo(), 0);
+    const raw = JSON.parse(JSON.stringify(s));
+    expect(parseSequence(raw).items[1]!.title!.animIn).toBeUndefined();
   });
 });

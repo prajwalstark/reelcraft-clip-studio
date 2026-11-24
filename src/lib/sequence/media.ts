@@ -35,7 +35,7 @@ import {
   placement,
 } from "./model";
 import { audible, propAt } from "./keyframes";
-import { ensureFont, renderTitle } from "./titles";
+import { ensureFont, renderTitle, titleAnimAt } from "./titles";
 export type Files = Map<string, File>;
 export const RATE = 48000;
 export function bounded<T>(promise: Promise<T>, signal: AbortSignal, ms = 30000): Promise<T> {
@@ -246,10 +246,16 @@ export class MediaSession {
     for (const c of visualItems(s, frame)) {
       const a = assetOf(s, c);
       let image: CanvasImageSource;
+      // Title entrance/exit: extra opacity, offset (ems) and scale, plus partial text.
+      const anim = c.title ? titleAnimAt(c.title, frame - c.start, c.frames, s.fps) : null;
       if (c.title) {
         // Render the text at the size it will be drawn (frame height × scale), so it's sharp.
         await bounded(ensureFont(c.title), this.signal);
-        image = renderTitle(c.title, canvas.height * Math.max(0.1, propAt(c, "scale", frame)));
+        image = renderTitle(
+          c.title,
+          canvas.height * Math.max(0.1, propAt(c, "scale", frame)),
+          anim?.reveal,
+        );
       } else if (a.kind === "image") {
         let b = this.pictures.get(a.id);
         if (!b) {
@@ -335,9 +341,15 @@ export class MediaSession {
         Object.assign(src, { x: 0, y: 0, w: lw, h: lh });
       }
       ctx.save();
-      ctx.globalAlpha = clipLevel(s, c, frame);
+      ctx.globalAlpha = clipLevel(s, c, frame) * (anim?.alpha ?? 1);
       ctx.translate(pl.cx, pl.cy);
       if (pl.rad) ctx.rotate(pl.rad);
+      if (anim && c.title) {
+        // Offsets are in ems of the drawn text, along the title's own axes.
+        const em = c.title.size * canvas.height * propAt(c, "scale", frame);
+        ctx.translate(anim.dx * em, anim.dy * em);
+        if (anim.scale !== 1) ctx.scale(anim.scale, anim.scale);
+      }
       ctx.drawImage(picture, src.x, src.y, src.w, src.h, v.x, v.y, v.w, v.h);
       ctx.restore();
       if (sequential && frame === end(c) - 1) {
