@@ -14,6 +14,7 @@ export function SequencePreview({
   selected,
   onSelect,
   onTransform,
+  onActivate,
 }: {
   sequence: Sequence;
   files: Files;
@@ -25,6 +26,7 @@ export function SequencePreview({
   selected?: string | undefined;
   onSelect?: TransformProps["onSelect"] | undefined;
   onTransform?: TransformProps["onTransform"] | undefined;
+  onActivate?: TransformProps["onActivate"] | undefined;
 }) {
   const [quality, setQuality] = useState<360 | 720>(360);
   const latest = useRef(sequence);
@@ -255,6 +257,7 @@ export function SequencePreview({
               active={!disabled && !playing && !preparing}
               onSelect={onSelect}
               onTransform={onTransform}
+              onActivate={onActivate}
               onDragging={(on) => {
                 live.current = on;
               }}

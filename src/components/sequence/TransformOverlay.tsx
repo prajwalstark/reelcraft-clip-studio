@@ -31,6 +31,8 @@ export interface TransformProps {
   /** `gesture` is the same for every update of one drag, so the editor can undo it as one step. */
   onTransform: (id: string, frame: number, values: TransformValues, gesture: string) => void;
   onDragging: (dragging: boolean) => void;
+  /** Double-click on a clip (e.g. to edit a title's text). */
+  onActivate?: ((c: Item) => void) | undefined;
 }
 
 type Mode = "move" | "scale" | "rotate" | Edge;
@@ -65,6 +67,7 @@ export function TransformOverlay({
   onSelect,
   onTransform,
   onDragging,
+  onActivate,
 }: TransformProps) {
   const root = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -210,6 +213,15 @@ export function TransformOverlay({
   };
 
   const at = (v: number, extent: number) => `${(v / extent) * 100}%`;
+  // The rotate knob sits just above the box (turned with it) so it never covers small titles,
+  // unless that spot is off the frame, where it would be clipped; then it goes inside.
+  const knobOutside = (p: Placement) => {
+    const lx = p.visible.x + p.visible.w / 2,
+      ly = p.visible.y - H * 0.085;
+    const x = p.cx + lx * Math.cos(p.rad) - ly * Math.sin(p.rad),
+      y = p.cy + lx * Math.sin(p.rad) + ly * Math.cos(p.rad);
+    return x >= 0 && x <= W && y >= 0 && y <= H;
+  };
   // A rotated box: positioned by its unrotated rectangle, turned about the clip's position.
   const boxStyle = (r: { x: number; y: number; w: number; h: number }, p: Placement) => ({
     left: at(p.cx + r.x, W),
@@ -235,6 +247,12 @@ export function TransformOverlay({
       onPointerUp={end}
       onPointerCancel={end}
       onKeyDown={onKeyDown}
+      onDoubleClick={(e) => {
+        if (!active || !onActivate) return;
+        const p = toCanvas(e);
+        const target = hitTest(sequence, frame, W, H, p.x, p.y);
+        if (target) onActivate(target);
+      }}
     >
       {pl && cropping && (
         <div
@@ -257,7 +275,12 @@ export function TransformOverlay({
               aria-hidden="true"
             />
           ))}
-          <span data-handle="rotate" className="seq-xform-rotate" aria-hidden="true" />
+          <span
+            data-handle="rotate"
+            // Above the box when there's room (so it never covers small titles), else inside.
+            className={`seq-xform-rotate ${knobOutside(pl) ? "outside" : ""}`}
+            aria-hidden="true"
+          />
           {cropping &&
             EDGES.map((edge) => (
               <span

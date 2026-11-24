@@ -34,7 +34,8 @@ import {
   end,
   placement,
 } from "./model";
-import { audible } from "./keyframes";
+import { audible, propAt } from "./keyframes";
+import { ensureFont, renderTitle } from "./titles";
 export type Files = Map<string, File>;
 export const RATE = 48000;
 export function bounded<T>(promise: Promise<T>, signal: AbortSignal, ms = 30000): Promise<T> {
@@ -245,7 +246,11 @@ export class MediaSession {
     for (const c of visualItems(s, frame)) {
       const a = assetOf(s, c);
       let image: CanvasImageSource;
-      if (a.kind === "image") {
+      if (c.title) {
+        // Render the text at the size it will be drawn (frame height × scale), so it's sharp.
+        await bounded(ensureFont(c.title), this.signal);
+        image = renderTitle(c.title, canvas.height * Math.max(0.1, propAt(c, "scale", frame)));
+      } else if (a.kind === "image") {
         let b = this.pictures.get(a.id);
         if (!b) {
           const task = createImageBitmap(this.file(a));
@@ -395,7 +400,8 @@ export async function exportSequence(
   const frames = totalFrames(s);
   if (!frames) throw new Error("Add clips before exporting.");
   for (const c of s.items)
-    if (!files.has(c.assetId)) throw new Error(`Relink ${assetOf(s, c).name} before exporting.`);
+    if (!c.title && !files.has(c.assetId))
+      throw new Error(`Relink ${assetOf(s, c).name} before exporting.`);
   // A clip's grade must be renderable before we start — never silently dropped.
   for (const c of s.items) assertGradeRenderable(assetOf(s, c).name, c);
   const session = new MediaSession(s, files, signal);
