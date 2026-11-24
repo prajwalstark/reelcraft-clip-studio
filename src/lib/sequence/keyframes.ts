@@ -135,6 +135,25 @@ export function clearAnimation(c: Animated, p: Prop, offset: number) {
   } as { keys: Keyframes | undefined } & Partial<Record<Prop, number>>;
 }
 
+/**
+ * Patch that sets properties to `values` at a timeline `frame`: a keyed property gets a key at
+ * that frame (added or updated), an unkeyed one changes its static value. Used by direct
+ * manipulation in the program monitor, so dragging respects existing animation.
+ */
+export function valuesPatch(c: Animated, frame: number, values: Partial<Record<Prop, number>>) {
+  const offset = Math.round(frame - c.start);
+  let keys = c.keys;
+  const patch: Partial<Record<Prop, number>> & { keys?: Keyframes | undefined } = {};
+  for (const p of ANIMATABLE) {
+    const v = values[p];
+    if (v === undefined || !Number.isFinite(v)) continue;
+    if (isAnimated({ ...c, keys }, p)) keys = withKey({ ...c, keys }, p, offset, v);
+    else patch[p] = clampTo(p, v);
+  }
+  if (keys !== c.keys) patch.keys = keys;
+  return patch;
+}
+
 /** Offsets (within the clip) that hold at least one key, for timeline markers. */
 export function keyOffsets(c: Animated): number[] {
   const set = new Set<number>();

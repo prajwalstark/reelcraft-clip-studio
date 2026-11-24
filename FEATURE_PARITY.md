@@ -127,6 +127,19 @@ The scopes measure the video **after grading and before templates, titles and ca
 
 Verified: unit tests check Rec.709 Cb/Cr geometry (complementary targets exactly opposite, correct order and quadrants, skin tones near the I-line), histogram/waveform/parade placement and crushed/clipped shares. In Chromium, a test pattern's yellow and blue bars read at about 93 % and 7 % on the waveform and land on the Yl and B targets on the vectorscope; adding a white caption over the frame left every scope value unchanged; and warming the Gain wheel raised the red mean (63 → 71) and lowered blue (93 → 88) on real footage.
 
+## Moving clips in the program monitor
+
+In Sequence Studio you can position clips on the program monitor itself:
+
+- **Click** the picture to select the clip on top at that point (V3 over V2 over V1). The selected clip shows a box with four corner handles while the playhead is over it.
+- **Drag** inside the picture to move it. It snaps to the frame's centre lines and to the frame edges (pink guides show what it snapped to); hold **Alt** to move without snapping. A readout shows X/Y while dragging.
+- **Drag a corner** to scale around the clip's centre (snaps to 100 %, range 10–300 %).
+- **Keyboard:** with the monitor focused, arrow keys nudge by 0.5 % (Shift: 5 %), **+** / **−** scale by 2 % (Shift: 10 %).
+- Each drag is one undo step. If Position or Scale has keyframes, a drag adds or updates a keyframe at the playhead instead of changing the whole clip.
+- The box is hidden while playing, while exporting, and for clips on locked or hidden tracks. A clip covered by another layer can still be moved with its corner handles, the arrow keys or the inspector.
+
+The box and the picture use the same geometry function as the compositor, so what you drag is exactly what's drawn and exported. Verified in Chromium with full-frame bars on V1 and footage at 50 % on V2: clicking selected the right layer each time; a drag ending just inside the top-left edges snapped flush (X/Y 25 %), the same drag with Alt stayed at 25.8 %/25.5 %, and a drag near the middle snapped to 50 %/50 %; a corner drag scaled to 75.6 %; Undo reverted one gesture at a time; arrow-key nudges moved by 0.5 % and 5 %; and a drag at frame 60 with Position keyed at frame 0 added keys at 60 with frame 30 exactly halfway. The box disappeared during playback and returned on pause.
+
 ## Keyframes in Sequence Studio
 
 Select a clip and use the keyframe row under **Position X**, **Position Y**, **Scale**, **Opacity** or **Volume** in the inspector:

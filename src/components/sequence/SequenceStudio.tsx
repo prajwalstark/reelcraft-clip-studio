@@ -50,6 +50,7 @@ import {
   keyAt,
   keyOffsets,
   valueAt,
+  valuesPatch,
   withEase,
   withKey,
   withoutKey,
@@ -379,7 +380,11 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
         next = fn(old);
       if (next === old) return;
       const now = Date.now();
-      const merge = !!key && key === lastCommit.current.key && now - lastCommit.current.at < 600;
+      // A monitor drag ("drag:…" keys are unique per gesture) is one step however long it takes.
+      const merge =
+        !!key &&
+        key === lastCommit.current.key &&
+        (key.startsWith("drag:") || now - lastCommit.current.at < 600);
       lastCommit.current = { key: key ?? "", at: now };
       if (!merge) setUndo((h) => [...h.slice(-49), old]);
       setRedo([]);
@@ -807,6 +812,17 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
           onFrame={setFrame}
           disabled={!!busy || !active}
           seekVersion={seekVersion}
+          selected={selected}
+          onSelect={(c) => {
+            setSelected(c.id);
+            setSource(c.assetId);
+          }}
+          onTransform={(id, at, values, gesture) =>
+            commit((s) => {
+              const c = s.items.find((x) => x.id === id);
+              return c ? patchItem(s, id, valuesPatch(c, at, values)) : s;
+            }, gesture)
+          }
         />
         <aside className="seq-inspector">
           <div className="seq-panel-heading">INSPECTOR</div>

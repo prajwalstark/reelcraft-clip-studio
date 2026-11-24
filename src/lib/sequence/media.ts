@@ -32,8 +32,9 @@ import {
   dimensions,
   trackOf,
   end,
+  clipRect,
 } from "./model";
-import { audible, propAt } from "./keyframes";
+import { audible } from "./keyframes";
 export type Files = Map<string, File>;
 export const RATE = 48000;
 export function bounded<T>(promise: Promise<T>, signal: AbortSignal, ms = 30000): Promise<T> {
@@ -293,15 +294,7 @@ export class MediaSession {
         image = wrapped.canvas;
       }
       this.signal.throwIfAborted();
-      const ratio =
-        (c.fit === "cover" ? Math.max : Math.min)(
-          canvas.width / a.width,
-          canvas.height / a.height,
-        ) * propAt(c, "scale", frame);
-      const w = a.width * ratio,
-        h = a.height * ratio;
-      const dx = canvas.width * propAt(c, "x", frame) - w / 2;
-      const dy = canvas.height * propAt(c, "y", frame) - h / 2;
+      const { x: dx, y: dy, w, h } = clipRect(s, c, frame, canvas.width, canvas.height);
       const job = gradeJobFor(c);
       const renderer = job ? lookRenderer() : null;
       if (job && renderer) {
