@@ -32,6 +32,7 @@ import {
   trackOf,
   assetOf,
   transitionFrames,
+  addTitle,
 } from "@/lib/sequence/model";
 import { probe, download, exportSequence, type Files } from "@/lib/sequence/media";
 import {
@@ -56,6 +57,7 @@ import {
   withoutKey,
 } from "@/lib/sequence/keyframes";
 import { SequencePreview } from "./SequencePreview";
+import { TitleControls } from "./TitleControls";
 import "./sequence.css";
 const STORAGE = "reelcraft-sequence-v1";
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -431,6 +433,20 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
     sourceAsset = sequence.assets.find((a) => a.id === source);
   const patch = (p: Partial<Item>) => {
     if (clip) commit((s) => patchItem(s, clip.id, p));
+  };
+  const titleText = useRef<HTMLTextAreaElement>(null);
+  /** Add a title at the playhead, select it and put the cursor in its text. */
+  const newTitle = () => {
+    let added = "";
+    commit((s) => {
+      const next = addTitle(s, frame);
+      added = next.items.at(-1)!.id;
+      return next;
+    });
+    if (!added) return;
+    setSelected(added);
+    setSource("");
+    requestAnimationFrame(() => titleText.current?.select());
   };
   const missing = sequence.assets.filter((a) => !files.has(a.id)).length;
   const run = async (label: string, work: (signal: AbortSignal) => Promise<void>) => {
@@ -817,6 +833,9 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
             setSelected(c.id);
             setSource(c.assetId);
           }}
+          onActivate={(c) => {
+            if (c.title) requestAnimationFrame(() => titleText.current?.select());
+          }}
           onTransform={(id, at, values, gesture) =>
             commit((s) => {
               const c = s.items.find((x) => x.id === id);
@@ -943,27 +962,54 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                   min={1}
                 />
               </div>
-              <Numeric
-                label="Source in (seconds)"
-                value={clip.sourceIn}
-                step={1 / sequence.fps}
-                min={0}
-                onChange={(v) => patch({ sourceIn: v })}
-              />
+              {clip.title ? (
+                <TitleControls
+                  title={clip.title}
+                  textRef={titleText}
+                  onChange={(t, key) =>
+                    commit((s) => {
+                      const c = s.items.find((x) => x.id === clip.id);
+                      return c?.title ? patchItem(s, c.id, { title: { ...c.title, ...t } }) : s;
+                    }, `title-${key}-${clip.id}`)
+                  }
+                  onPreset={(p) =>
+                    commit((s) => {
+                      const c = s.items.find((x) => x.id === clip.id);
+                      return c?.title
+                        ? patchItem(s, c.id, {
+                            title: { ...c.title, ...p.title, text: c.title.text },
+                            x: p.place.x,
+                            y: p.place.y,
+                          })
+                        : s;
+                    })
+                  }
+                />
+              ) : (
+                <Numeric
+                  label="Source in (seconds)"
+                  value={clip.sourceIn}
+                  step={1 / sequence.fps}
+                  min={0}
+                  onChange={(v) => patch({ sourceIn: v })}
+                />
+              )}
               <p className="seq-subtle seq-keyhint">
                 ◆ sets a keyframe at the playhead. Once a value has keyframes, editing it at the
                 playhead adds or updates one; ✕ stops animating it.
               </p>
-              <Keyed
-                label="Volume (%)"
-                prop="volume"
-                clip={clip}
-                frame={frame}
-                min={0}
-                max={100}
-                onPatch={patch}
-                onSeek={seek}
-              />
+              {!clip.title && (
+                <Keyed
+                  label="Volume (%)"
+                  prop="volume"
+                  clip={clip}
+                  frame={frame}
+                  min={0}
+                  max={100}
+                  onPatch={patch}
+                  onSeek={seek}
+                />
+              )}
               {videoTrack(clip.track) && (
                 <>
                   <div className="seq-field-pair">
@@ -1069,64 +1115,71 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                     Or work on the picture: drag to move, corners to scale, the knob to rotate, and
                     Crop for edge handles.
                   </p>
-                  <label className="seq-field">
-                    Fit
-                    <select
-                      value={clip.fit}
-                      onChange={(e) => patch({ fit: e.target.value as Item["fit"] })}
-                    >
-                      <option value="contain">Contain</option>
-                      <option value="cover">Fill / crop</option>
-                    </select>
-                  </label>
-                  <details className="seq-colour" open>
-                    <summary>Colour</summary>
-                    <div className="seq-colour-body">
-                      <ScopesPanel note="Measures the program monitor (all tracks, after the Video Enhancer)." />
-                      <GradeControls
-                        value={clip.colorGrade}
-                        onChange={(colorGrade) =>
-                          commit((s) => patchItem(s, clip.id, { colorGrade }), `cgrade-${clip.id}`)
-                        }
-                        onApplyAll={() => {
-                          commit((s) => ({
-                            ...s,
-                            items: s.items.map((i) =>
-                              videoTrack(i.track) && !trackOf(s, i.track)?.locked
-                                ? { ...i, colorGrade: clip.colorGrade }
-                                : i,
-                            ),
-                          }));
-                          toast.success("Applied this grade to every unlocked video clip.");
-                        }}
-                      />
-                      <LookControls
-                        value={clip.grade}
-                        onChange={(grade) =>
-                          commit((s) => patchItem(s, clip.id, { grade }), `look-${clip.id}`)
-                        }
-                        onApplyAll={(grade) => {
-                          commit((s) => ({
-                            ...s,
-                            items: s.items.map((i) =>
-                              videoTrack(i.track) && !trackOf(s, i.track)?.locked
-                                ? { ...i, grade: { ...grade } }
-                                : i,
-                            ),
-                          }));
-                          toast.success("Applied this look to every unlocked video clip.");
-                        }}
-                        onLookDeleted={(id) =>
-                          commit((s) => ({
-                            ...s,
-                            items: s.items.map((i) =>
-                              i.grade?.lookId === id ? { ...i, grade: undefined } : i,
-                            ),
-                          }))
-                        }
-                      />
-                    </div>
-                  </details>
+                  {!clip.title && (
+                    <>
+                      <label className="seq-field">
+                        Fit
+                        <select
+                          value={clip.fit}
+                          onChange={(e) => patch({ fit: e.target.value as Item["fit"] })}
+                        >
+                          <option value="contain">Contain</option>
+                          <option value="cover">Fill / crop</option>
+                        </select>
+                      </label>
+                      <details className="seq-colour" open>
+                        <summary>Colour</summary>
+                        <div className="seq-colour-body">
+                          <ScopesPanel note="Measures the program monitor (all tracks, after the Video Enhancer)." />
+                          <GradeControls
+                            value={clip.colorGrade}
+                            onChange={(colorGrade) =>
+                              commit(
+                                (s) => patchItem(s, clip.id, { colorGrade }),
+                                `cgrade-${clip.id}`,
+                              )
+                            }
+                            onApplyAll={() => {
+                              commit((s) => ({
+                                ...s,
+                                items: s.items.map((i) =>
+                                  videoTrack(i.track) && !trackOf(s, i.track)?.locked
+                                    ? { ...i, colorGrade: clip.colorGrade }
+                                    : i,
+                                ),
+                              }));
+                              toast.success("Applied this grade to every unlocked video clip.");
+                            }}
+                          />
+                          <LookControls
+                            value={clip.grade}
+                            onChange={(grade) =>
+                              commit((s) => patchItem(s, clip.id, { grade }), `look-${clip.id}`)
+                            }
+                            onApplyAll={(grade) => {
+                              commit((s) => ({
+                                ...s,
+                                items: s.items.map((i) =>
+                                  videoTrack(i.track) && !trackOf(s, i.track)?.locked
+                                    ? { ...i, grade: { ...grade } }
+                                    : i,
+                                ),
+                              }));
+                              toast.success("Applied this look to every unlocked video clip.");
+                            }}
+                            onLookDeleted={(id) =>
+                              commit((s) => ({
+                                ...s,
+                                items: s.items.map((i) =>
+                                  i.grade?.lookId === id ? { ...i, grade: undefined } : i,
+                                ),
+                              }))
+                            }
+                          />
+                        </div>
+                      </details>
+                    </>
+                  )}
                 </>
               )}
               <div className="seq-field-pair">
@@ -1182,6 +1235,9 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
               }}
             >
               ↷ Redo
+            </button>
+            <button disabled={!!busy} onClick={newTitle}>
+              ＋ Title
             </button>
             <button
               disabled={!!busy || !clip}
@@ -1312,7 +1368,7 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                   .map((c) => (
                     <button
                       key={c.id}
-                      className={`seq-clip ${selected === c.id ? "selected" : ""} ${!files.has(c.assetId) ? "missing" : ""}`}
+                      className={`seq-clip ${selected === c.id ? "selected" : ""} ${c.title ? "title" : !files.has(c.assetId) ? "missing" : ""}`}
                       style={{
                         left: (c.start / sequence.fps) * zoom,
                         width: Math.max(5, (c.frames / sequence.fps) * zoom),

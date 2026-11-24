@@ -2,6 +2,7 @@ import type { GradeSettings } from "@/lib/reelforge/core";
 import { readGradable } from "@/lib/reelforge/grading/job";
 import type { ColorGrade } from "@/lib/reelforge/grading/primaries";
 import { type Enhancement, validEnhancement } from "./enhancer";
+import { DEFAULT_TITLE, type Title, readTitle, titleLayout, titleName } from "./titles";
 import {
   MAX_CROP,
   type Keyframes,
@@ -19,7 +20,8 @@ export interface Asset {
   name: string;
   size: number;
   lastModified: number;
-  kind: "video" | "audio" | "image";
+  /** "title" only for the stand-in source of a text layer (never stored in `assets`). */
+  kind: "video" | "audio" | "image" | "title";
   duration: number;
   origin: number;
   width: number;
@@ -60,6 +62,8 @@ export interface Item {
   cropRight?: number | undefined;
   cropTop?: number | undefined;
   cropBottom?: number | undefined;
+  /** A text layer: present on title clips, whose `assetId` is "". */
+  title?: Title | undefined;
   /** Keyframed position, scale, rotation, crop, opacity and volume (offsets from `start`). */
   keys?: Keyframes | undefined;
 }
@@ -97,7 +101,26 @@ export const end = (c: Item) => c.start + c.frames;
 export const totalFrames = (s: Sequence) => Math.max(0, ...s.items.map(end));
 export const videoTrack = (t: TrackId) => t.startsWith("V");
 export const trackOf = (s: Sequence, t: TrackId) => s.tracks.find((x) => x.id === t)!;
-export const assetOf = (s: Sequence, c: Item) => s.assets.find((a) => a.id === c.assetId)!;
+export const isTitle = (c: Item) => !!c.title;
+/** The clip's source; a title gets a stand-in (no file, no audio, any length). */
+export const assetOf = (s: Sequence, c: Item): Asset =>
+  c.title
+    ? {
+        id: "",
+        name: titleName(c.title),
+        kind: "title",
+        size: 0,
+        lastModified: 0,
+        duration: MAX_SECONDS,
+        origin: 0,
+        width: 0,
+        height: 0,
+        hasAudio: false,
+        peaks: [],
+      }
+    : s.assets.find((a) => a.id === c.assetId)!;
+/** Stills (images, titles) can be any length and have no source timing. */
+const still = (a: Asset) => a.kind === "image" || a.kind === "title";
 export const dimensions = (s: Sequence, res: 360 | 720 | 1080 | 2160) =>
   s.aspect === "9:16"
     ? { width: res, height: (res / 9) * 16 }
@@ -169,6 +192,54 @@ export function addItem(s: Sequence, assetId: string, track: TrackId, start: num
     ],
   };
 }
+/**
+ * Add a title at `start` (frames) for five seconds. Without a track it goes on the highest
+ * unlocked video track that is free for that span (V3, then V2, then V1).
+ */
+export function addTitle(
+  s: Sequence,
+  start: number,
+  options: { track?: TrackId; title?: Partial<Title>; x?: number; y?: number } = {},
+): Sequence {
+  if (s.items.length >= 200) throw new Error("Limit: 200 clips per sequence.");
+  const at = Math.max(0, Math.round(start));
+  const frames = Math.min(5 * s.fps, MAX_SECONDS * s.fps - at);
+  if (frames < 1) throw new Error(`Sequence limit: ${MAX_SECONDS} seconds.`);
+  const free = (t: TrackId) =>
+    !trackOf(s, t).locked &&
+    !s.items.some((c) => c.track === t && c.start < at + frames && end(c) > at);
+  const track =
+    options.track ??
+    (["V3", "V2", "V1"] as const).find(free) ??
+    (["V3", "V2", "V1"] as const).find((t) => !trackOf(s, t).locked);
+  if (!track) throw new Error("Unlock a video track to add a title.");
+  if (!videoTrack(track)) throw new Error("Titles go on video tracks.");
+  assertEditable(s, track);
+  const title = readTitle({ ...DEFAULT_TITLE, ...options.title })!;
+  return {
+    ...s,
+    items: [
+      ...s.items,
+      {
+        id: id(),
+        assetId: "",
+        track,
+        start: at,
+        frames,
+        sourceIn: 0,
+        volume: 1,
+        opacity: 1,
+        x: options.x ?? 0.5,
+        y: options.y ?? 0.5,
+        scale: 1,
+        fit: "contain",
+        fadeIn: 0,
+        fadeOut: 0,
+        title,
+      },
+    ],
+  };
+}
 export function patchItem(s: Sequence, itemId: string, patch: Partial<Item>): Sequence {
   const old = s.items.find((x) => x.id === itemId);
   if (!old) return s;
@@ -197,8 +268,13 @@ export function patchItem(s: Sequence, itemId: string, patch: Partial<Item>): Se
   c.frames = Math.max(1, Math.round(c.frames));
   if (c.start + c.frames > MAX_SECONDS * s.fps)
     throw new Error(`Sequence limit: ${MAX_SECONDS} seconds.`);
-  if (a.kind !== "image" && c.sourceIn + c.frames / s.fps > a.duration + 0.001)
+  if (!still(a) && c.sourceIn + c.frames / s.fps > a.duration + 0.001)
     throw new Error("Trim extends past the source media.");
+  if (old.title) {
+    const title = readTitle(c.title);
+    if (!title) throw new Error("Invalid title.");
+    c.title = title;
+  } else delete c.title;
   c.volume = Math.min(1, Math.max(0, c.volume));
   c.opacity = Math.min(1, Math.max(0, c.opacity));
   c.scale = Math.min(3, Math.max(0.1, c.scale));
@@ -374,6 +450,19 @@ export function clipLevel(s: Sequence, c: Item, frame: number, audio = false) {
  * scale included). The compositor draws with this and the monitor overlay edits with it.
  */
 export function clipRect(s: Sequence, c: Item, frame: number, width: number, height: number) {
+  if (c.title) {
+    // A title's picture is its laid-out text, sized relative to the frame height.
+    const L = titleLayout(c.title, height);
+    const k = propAt(c, "scale", frame);
+    const w = L.w * k,
+      h = L.h * k;
+    return {
+      x: width * propAt(c, "x", frame) - w / 2,
+      y: height * propAt(c, "y", frame) - h / 2,
+      w,
+      h,
+    };
+  }
   const a = assetOf(s, c);
   const ratio =
     (c.fit === "cover" ? Math.max : Math.min)(width / a.width, height / a.height) *
@@ -539,7 +628,9 @@ export function parseSequence(value: unknown): Sequence {
     throw new Error("Invalid tracks.");
   const itemIds = new Set<string>();
   for (const c of s.items) {
-    const a = s.assets.find((a) => a.id === c?.assetId);
+    const title = c && "title" in c ? readTitle(c.title) : undefined;
+    if (title === null || (title && c.assetId !== "")) throw new Error("Invalid title.");
+    const a = title ? assetOf(s, { ...c, title }) : s.assets.find((a) => a.id === c?.assetId);
     if (
       !c ||
       typeof c.id !== "string" ||
@@ -576,7 +667,7 @@ export function parseSequence(value: unknown): Sequence {
       }) ||
       (c.cropLeft ?? 0) + (c.cropRight ?? 0) > MAX_CROP + 1e-9 ||
       (c.cropTop ?? 0) + (c.cropBottom ?? 0) > MAX_CROP + 1e-9 ||
-      (a.kind !== "image" && c.sourceIn + c.frames / s.fps > a.duration + 0.001)
+      (!still(a) && c.sourceIn + c.frames / s.fps > a.duration + 0.001)
     )
       throw new Error("Invalid clip range or settings.");
     if (
@@ -592,9 +683,10 @@ export function parseSequence(value: unknown): Sequence {
   // Grading fields are validated like the Shorts editor's; anything malformed is dropped.
   // Keyframes likewise: malformed keys are dropped and values clamped to each property's range.
   clean.items = clean.items.map((c) => {
-    const { colorGrade: _cg, grade: _g, keys: _k, ...rest } = c;
+    const { colorGrade: _cg, grade: _g, keys: _k, title: _t, ...rest } = c;
     const keys = readKeyframes(c.keys);
-    return { ...rest, ...readGradable(c), ...(keys ? { keys } : {}) };
+    const title = c.title ? readTitle(c.title) : null;
+    return { ...rest, ...readGradable(c), ...(keys ? { keys } : {}), ...(title ? { title } : {}) };
   });
   return cleanTransitions(clean);
 }

@@ -127,6 +127,17 @@ The scopes measure the video **after grading and before templates, titles and ca
 
 Verified: unit tests check Rec.709 Cb/Cr geometry (complementary targets exactly opposite, correct order and quadrants, skin tones near the I-line), histogram/waveform/parade placement and crushed/clipped shares. In Chromium, a test pattern's yellow and blue bars read at about 93 % and 7 % on the waveform and land on the Yl and B targets on the vectorscope; adding a white caption over the frame left every scope value unchanged; and warming the Gain wheel raised the red mean (63 → 71) and lowered blue (93 → 88) on real footage.
 
+## Titles in Sequence Studio
+
+**＋ Title** (timeline toolbar) adds a five-second text layer at the playhead, on the highest unlocked video track that is free there (V3, then V2, then V1), selects it and selects its placeholder text so you can type straight away. A title is a clip like any other: move, trim, split, crossfade, fade, keyframe, move/scale/rotate/crop it on the monitor, undo, save and export.
+
+- **Text:** multiple lines, up to 500 characters. Double-click a title on the monitor to jump to its text.
+- **Style:** font (Instrument Sans, Instrument Serif and JetBrains Mono — the web fonts the app loads, identical on every device — plus System UI, Georgia and Impact, which depend on the exporting computer), Regular/Bold/Heavy, italic, size as a share of the frame height, colour, left/centre/right alignment, line spacing, outline width and colour, drop shadow, and a rounded background box with colour and opacity.
+- **Presets:** Big title, Lower third, Subtitle and Label set a look and a position; your text is kept.
+- **Rendering:** the text is laid out relative to the frame height and rendered at the size it is drawn (frame height × scale), so it is sharp at 4K and the same in preview and export. Fonts are loaded before drawing. Titles have no source file, so they never need relinking, and removing media from the bin leaves them alone. Stored titles are validated on load (unknown fonts/values fall back to defaults, numbers are clamped).
+
+Verified in Chromium over a colour-bars clip: ＋ Title put a title on V3 at the playhead with the text box focused; typed two lines appeared centred inside the monitor's selection box; Lower third moved it to the lower left with a dark box; switching the colour to amber left no white text pixels; dragging it to the top centre snapped to X 50 %; and a 720p export matched the preview frame within 2.61/255 mean (the codec baseline), with the italic amber text crisp in its box. The title survived a reload with its text, double-clicking it focused the text field, and rotating it with the knob (Shift) snapped to −15°.
+
 ## Moving clips in the program monitor
 
 In Sequence Studio you can position clips on the program monitor itself:
