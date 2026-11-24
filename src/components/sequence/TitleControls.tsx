@@ -1,5 +1,14 @@
 import { type Ref, useId } from "react";
-import { FONTS, LIMITS, MAX_TEXT, PRESETS, type Align, type Title } from "@/lib/sequence/titles";
+import {
+  ANIMS,
+  FONTS,
+  LIMITS,
+  MAX_TEXT,
+  PRESETS,
+  type Align,
+  type AnimType,
+  type Title,
+} from "@/lib/sequence/titles";
 
 /**
  * Inspector controls for a title clip. `onChange` receives the changed fields and a key, so
@@ -176,6 +185,63 @@ export function TitleControls({
           {slider("Box opacity", "backgroundOpacity", 100, "%")}
         </div>
       )}
+      <div className="seq-title-anims" role="group" aria-label="Title animation">
+        <h3>Animation</h3>
+        {(["animIn", "animOut"] as const).map((k) => {
+          const a = title[k];
+          const name = k === "animIn" ? "In" : "Out";
+          return (
+            <div key={k} className="seq-field-pair">
+              <label className="seq-field">
+                {name}
+                <select
+                  aria-label={`${name} animation`}
+                  value={a?.type ?? ""}
+                  onChange={(e) =>
+                    onChange(
+                      {
+                        [k]: e.target.value
+                          ? { type: e.target.value as AnimType, duration: a?.duration ?? 0.5 }
+                          : undefined,
+                      },
+                      k,
+                    )
+                  }
+                >
+                  <option value="">None</option>
+                  {ANIMS.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="seq-field seq-slider">
+                <span>
+                  {name} time
+                  <output>{a ? `${a.duration.toFixed(2)} s` : "—"}</output>
+                </span>
+                <input
+                  type="range"
+                  aria-label={`${name} animation duration (seconds)`}
+                  min={0.1}
+                  max={3}
+                  step={0.05}
+                  disabled={!a}
+                  value={a?.duration ?? 0.5}
+                  onChange={(e) =>
+                    a && onChange({ [k]: { ...a, duration: Number(e.target.value) } }, `${k}-d`)
+                  }
+                />
+              </label>
+            </div>
+          );
+        })}
+        <p className="seq-subtle">
+          Out plays the same motion in reverse at the end of the clip. Play or scrub to preview;
+          fades and keyframes still apply on top.
+        </p>
+      </div>
       <p className="seq-subtle">
         Instrument Sans, Instrument Serif and JetBrains Mono look the same on every device; the
         system fonts depend on the computer that exports.

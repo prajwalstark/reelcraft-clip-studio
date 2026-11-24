@@ -362,6 +362,8 @@ export function splitItem(s: Sequence, itemId: string, frame: number): Sequence 
             {
               ...rest,
               ...(headKeys ? { keys: headKeys } : {}),
+              // A cut isn't an exit: the first half of a title keeps only its entrance.
+              ...(rest.title ? { title: { ...rest.title, animOut: undefined } } : {}),
               frames: cut,
               fadeOut: 0,
               fadeIn: Math.min(c.fadeIn, cut),
@@ -369,6 +371,8 @@ export function splitItem(s: Sequence, itemId: string, frame: number): Sequence 
             {
               ...rest,
               ...(tailKeys ? { keys: tailKeys } : {}),
+              // …and the second half only its exit.
+              ...(rest.title ? { title: { ...rest.title, animIn: undefined } } : {}),
               id: id(),
               start: c.start + cut,
               sourceIn: c.sourceIn + cut / s.fps,
