@@ -244,7 +244,7 @@ describe("stored keys", () => {
         { f: 3, v: "no" },
         { f: 4, v: 0.3, ease: "bounce" }, // unknown ease → linear
       ],
-      rotation: [{ f: 0, v: 1 }], // unknown property
+      skew: [{ f: 0, v: 1 }], // unknown property
       y: "nope",
     };
     const parsed = only(parseSequence(raw));

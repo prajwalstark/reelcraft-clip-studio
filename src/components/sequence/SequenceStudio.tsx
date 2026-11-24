@@ -127,7 +127,7 @@ function Keyed({
   const inside = offset >= 0 && offset < clip.frames;
   const at = Math.min(clip.frames - 1, Math.max(0, offset));
   const animated = isAnimated(clip, prop);
-  const value = animated ? valueAt(clip.keys?.[prop], clip[prop], at) : clip[prop];
+  const value = animated ? valueAt(clip.keys?.[prop], clip[prop] ?? 0, at) : (clip[prop] ?? 0);
   const here = inside ? keyAt(clip, prop, offset) : undefined;
   // Navigation only visits keys inside the clip; from outside it jumps to the nearest one.
   const prev = adjacentKey(clip, prop, offset, -1);
@@ -1010,6 +1010,65 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                       onSeek={seek}
                     />
                   </div>
+                  <Keyed
+                    label="Rotation (°)"
+                    prop="rotation"
+                    clip={clip}
+                    frame={frame}
+                    unit={1}
+                    min={-360}
+                    max={360}
+                    onPatch={patch}
+                    onSeek={seek}
+                  />
+                  <div className="seq-field-pair">
+                    <Keyed
+                      label="Crop left (%)"
+                      prop="cropLeft"
+                      clip={clip}
+                      frame={frame}
+                      min={0}
+                      max={90}
+                      onPatch={patch}
+                      onSeek={seek}
+                    />
+                    <Keyed
+                      label="Crop right (%)"
+                      prop="cropRight"
+                      clip={clip}
+                      frame={frame}
+                      min={0}
+                      max={90}
+                      onPatch={patch}
+                      onSeek={seek}
+                    />
+                  </div>
+                  <div className="seq-field-pair">
+                    <Keyed
+                      label="Crop top (%)"
+                      prop="cropTop"
+                      clip={clip}
+                      frame={frame}
+                      min={0}
+                      max={90}
+                      onPatch={patch}
+                      onSeek={seek}
+                    />
+                    <Keyed
+                      label="Crop bottom (%)"
+                      prop="cropBottom"
+                      clip={clip}
+                      frame={frame}
+                      min={0}
+                      max={90}
+                      onPatch={patch}
+                      onSeek={seek}
+                    />
+                  </div>
+                  <p className="seq-subtle">
+                    Or work on the picture: drag to move, corners to scale, the knob to rotate, and
+                    Crop for edge handles.
+                  </p>
                   <label className="seq-field">
                     Fit
                     <select

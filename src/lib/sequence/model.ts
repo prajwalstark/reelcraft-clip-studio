@@ -3,6 +3,7 @@ import { readGradable } from "@/lib/reelforge/grading/job";
 import type { ColorGrade } from "@/lib/reelforge/grading/primaries";
 import { type Enhancement, validEnhancement } from "./enhancer";
 import {
+  MAX_CROP,
   type Keyframes,
   normalizeKeys,
   propAt,
@@ -52,9 +53,24 @@ export interface Item {
   colorGrade?: ColorGrade | undefined;
   /** Imported look (LUT/CDL) by library id, mixed at `intensity`. */
   grade?: GradeSettings | undefined;
-  /** Keyframed position, scale, opacity and volume (offsets from `start`). */
+  /** Degrees clockwise about the clip's position (x, y). Absent = 0. */
+  rotation?: number | undefined;
+  /** Share of the picture trimmed from each edge (0…0.9; left+right and top+bottom ≤ 0.9). */
+  cropLeft?: number | undefined;
+  cropRight?: number | undefined;
+  cropTop?: number | undefined;
+  cropBottom?: number | undefined;
+  /** Keyframed position, scale, rotation, crop, opacity and volume (offsets from `start`). */
   keys?: Keyframes | undefined;
 }
+/** Optional transform fields, all 0 by default. */
+export const EXTRA_TRANSFORM = [
+  "rotation",
+  "cropLeft",
+  "cropRight",
+  "cropTop",
+  "cropBottom",
+] as const;
 export interface Sequence {
   format: "reelcraft-sequence";
   version: 1;
@@ -190,6 +206,24 @@ export function patchItem(s: Sequence, itemId: string, patch: Partial<Item>): Se
   c.y = Math.min(1, Math.max(0, c.y));
   c.fadeIn = Math.min(c.frames, Math.max(0, Math.round(c.fadeIn)));
   c.fadeOut = Math.min(c.frames - c.fadeIn, Math.max(0, Math.round(c.fadeOut)));
+  for (const f of EXTRA_TRANSFORM) {
+    const v = c[f];
+    if (v === undefined) continue;
+    if (!Number.isFinite(v)) throw new Error("Enter finite numbers.");
+    c[f] = f === "rotation" ? Math.min(360, Math.max(-360, v)) : Math.min(MAX_CROP, Math.max(0, v));
+  }
+  // Keep at least 10 % visible per axis: the edge being edited gives way.
+  for (const [a, b] of [
+    ["cropLeft", "cropRight"],
+    ["cropTop", "cropBottom"],
+  ] as const) {
+    const over = (c[a] ?? 0) + (c[b] ?? 0) - MAX_CROP;
+    if (over > 1e-9) {
+      const give = a in patch ? a : b;
+      c[give] = Math.max(0, (c[give] ?? 0) - over);
+    }
+  }
+  for (const f of EXTRA_TRANSFORM) if (!c[f]) delete c[f];
   c.keys = normalizeKeys(c.keys);
   if (!c.keys) delete c.keys;
   return cleanTransitions({ ...s, items: s.items.map((x) => (x.id === itemId ? c : x)) });
@@ -353,6 +387,67 @@ export function clipRect(s: Sequence, c: Item, frame: number, width: number, hei
     h,
   };
 }
+/** Crop at `frame`, animated, with each axis limited so at least 10 % stays visible. */
+export function cropAt(c: Item, frame: number) {
+  const axis = (a: number, b: number) => {
+    const sum = a + b;
+    return sum > MAX_CROP ? [(a * MAX_CROP) / sum, (b * MAX_CROP) / sum] : [a, b];
+  };
+  const [l, r] = axis(propAt(c, "cropLeft", frame), propAt(c, "cropRight", frame));
+  const [t, b] = axis(propAt(c, "cropTop", frame), propAt(c, "cropBottom", frame));
+  return { l: l!, r: r!, t: t!, b: b! };
+}
+/**
+ * Full placement of a visual clip at `frame` on a `width`×`height` canvas: the anchor (its
+ * position), the uncropped picture size, rotation, crop, and the visible (cropped) rectangle
+ * relative to the anchor before rotation. Compositor, hit-testing and the monitor overlay all
+ * use this, so what you drag is what is drawn and exported.
+ */
+export function placement(s: Sequence, c: Item, frame: number, width: number, height: number) {
+  const full = clipRect(s, c, frame, width, height);
+  const crop = cropAt(c, frame);
+  const cx = full.x + full.w / 2,
+    cy = full.y + full.h / 2;
+  const visible = {
+    x: -full.w / 2 + crop.l * full.w,
+    y: -full.h / 2 + crop.t * full.h,
+    w: full.w * (1 - crop.l - crop.r),
+    h: full.h * (1 - crop.t - crop.b),
+  };
+  const rotation = propAt(c, "rotation", frame);
+  const rad = (rotation * Math.PI) / 180;
+  return { cx, cy, w: full.w, h: full.h, rotation, rad, crop, visible };
+}
+export type Placement = ReturnType<typeof placement>;
+/** Canvas-space corners of the visible picture (rotated), clockwise from top-left. */
+export function corners(p: Placement) {
+  const cos = Math.cos(p.rad),
+    sin = Math.sin(p.rad);
+  const v = p.visible;
+  return [
+    [v.x, v.y],
+    [v.x + v.w, v.y],
+    [v.x + v.w, v.y + v.h],
+    [v.x, v.y + v.h],
+  ].map(([x, y]) => ({ x: p.cx + x! * cos - y! * sin, y: p.cy + x! * sin + y! * cos }));
+}
+/** Axis-aligned bounds of the visible picture on the canvas. */
+export function bounds(p: Placement) {
+  const pts = corners(p);
+  const xs = pts.map((q) => q.x),
+    ys = pts.map((q) => q.y);
+  const x = Math.min(...xs),
+    y = Math.min(...ys);
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+}
+/** Point (canvas space) → clip-local coordinates relative to the anchor, before rotation. */
+export function toLocal(p: Placement, px: number, py: number) {
+  const dx = px - p.cx,
+    dy = py - p.cy,
+    cos = Math.cos(p.rad),
+    sin = Math.sin(p.rad);
+  return { x: dx * cos + dy * sin, y: -dx * sin + dy * cos };
+}
 export function visualItems(s: Sequence, frame: number) {
   return s.items
     .filter(
@@ -472,6 +567,15 @@ export function parseSequence(value: unknown): Sequence {
       c.fadeIn < 0 ||
       c.fadeOut < 0 ||
       c.fadeIn + c.fadeOut > c.frames ||
+      EXTRA_TRANSFORM.some((f) => {
+        const v = c[f];
+        if (v === undefined) return false;
+        return (
+          !Number.isFinite(v) || (f === "rotation" ? Math.abs(v) > 360 : v < 0 || v > MAX_CROP)
+        );
+      }) ||
+      (c.cropLeft ?? 0) + (c.cropRight ?? 0) > MAX_CROP + 1e-9 ||
+      (c.cropTop ?? 0) + (c.cropBottom ?? 0) > MAX_CROP + 1e-9 ||
       (a.kind !== "image" && c.sourceIn + c.frames / s.fps > a.duration + 0.001)
     )
       throw new Error("Invalid clip range or settings.");

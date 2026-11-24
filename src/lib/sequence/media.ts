@@ -32,7 +32,7 @@ import {
   dimensions,
   trackOf,
   end,
-  clipRect,
+  placement,
 } from "./model";
 import { audible } from "./keyframes";
 export type Files = Map<string, File>;
@@ -294,31 +294,47 @@ export class MediaSession {
         image = wrapped.canvas;
       }
       this.signal.throwIfAborted();
-      const { x: dx, y: dy, w, h } = clipRect(s, c, frame, canvas.width, canvas.height);
+      // Crop the source, then draw the visible part rotated about the clip's position.
+      const pl = placement(s, c, frame, canvas.width, canvas.height);
+      const { width: iw, height: ih } = image as { width: number; height: number };
+      const src = {
+        x: pl.crop.l * iw,
+        y: pl.crop.t * ih,
+        w: iw * (1 - pl.crop.l - pl.crop.r),
+        h: ih * (1 - pl.crop.t - pl.crop.b),
+      };
+      const v = pl.visible;
       const job = gradeJobFor(c);
       const renderer = job ? lookRenderer() : null;
+      let picture: CanvasImageSource = image;
       if (job && renderer) {
-        // Grade this clip alone on its own layer, then composite it with its opacity, so the
-        // grade never touches lower tracks showing through.
+        // Grade this clip alone on its own layer (the cropped picture, at about its drawn size),
+        // then composite it, so the grade never touches lower tracks showing through.
+        const k = Math.min(1, (2 * Math.max(canvas.width, canvas.height)) / Math.max(v.w, v.h));
+        const lw = Math.max(1, Math.round(v.w * k)),
+          lh = Math.max(1, Math.round(v.h * k));
         this.layer ??= document.createElement("canvas");
         const layer = this.layer;
-        if (layer.width !== canvas.width || layer.height !== canvas.height) {
-          layer.width = canvas.width;
-          layer.height = canvas.height;
+        if (layer.width !== lw || layer.height !== lh) {
+          layer.width = lw;
+          layer.height = lh;
         }
         const lctx = layer.getContext("2d")!;
         lctx.globalAlpha = 1;
         lctx.imageSmoothingEnabled = true;
         lctx.imageSmoothingQuality = "high";
-        lctx.clearRect(0, 0, layer.width, layer.height);
-        lctx.drawImage(image, dx, dy, w, h);
-        renderer.apply(lctx, job, dx, dy, w, h);
-        ctx.globalAlpha = clipLevel(s, c, frame);
-        ctx.drawImage(layer, 0, 0);
-      } else {
-        ctx.globalAlpha = clipLevel(s, c, frame);
-        ctx.drawImage(image, dx, dy, w, h);
+        lctx.clearRect(0, 0, lw, lh);
+        lctx.drawImage(image, src.x, src.y, src.w, src.h, 0, 0, lw, lh);
+        renderer.apply(lctx, job, 0, 0, lw, lh);
+        picture = layer;
+        Object.assign(src, { x: 0, y: 0, w: lw, h: lh });
       }
+      ctx.save();
+      ctx.globalAlpha = clipLevel(s, c, frame);
+      ctx.translate(pl.cx, pl.cy);
+      if (pl.rad) ctx.rotate(pl.rad);
+      ctx.drawImage(picture, src.x, src.y, src.w, src.h, v.x, v.y, v.w, v.h);
+      ctx.restore();
       if (sequential && frame === end(c) - 1) {
         const iterator = this.iterators.get(c.id);
         if (iterator) await bounded(iterator.return(), this.signal);

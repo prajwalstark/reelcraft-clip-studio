@@ -134,15 +134,21 @@ In Sequence Studio you can position clips on the program monitor itself:
 - **Click** the picture to select the clip on top at that point (V3 over V2 over V1). The selected clip shows a box with four corner handles while the playhead is over it.
 - **Drag** inside the picture to move it. It snaps to the frame's centre lines and to the frame edges (pink guides show what it snapped to); hold **Alt** to move without snapping. A readout shows X/Y while dragging.
 - **Drag a corner** to scale around the clip's centre (snaps to 100 %, range 10–300 %).
-- **Keyboard:** with the monitor focused, arrow keys nudge by 0.5 % (Shift: 5 %), **+** / **−** scale by 2 % (Shift: 10 %).
-- Each drag is one undo step. If Position or Scale has keyframes, a drag adds or updates a keyframe at the playhead instead of changing the whole clip.
+- **Drag the knob** (the ring near the top of the box) to rotate about the clip's position. Rotation snaps to 0°/90°/180°/270° within 3°; hold **Shift** for 15° steps or **Alt** for free rotation. Range −360° to 360°.
+- **Crop:** the **Crop** button on the monitor shows edge handles; drag an edge to trim it (a dashed outline shows the uncropped picture). At least 10 % of the picture stays visible across each axis. Cropping trims in place — the rest of the picture doesn't move.
+- **Keyboard:** with the monitor focused, arrow keys nudge by 0.5 % (Shift: 5 %), **+** / **−** scale by 2 % (Shift: 10 %), **[** / **]** rotate by 1° (Shift: 15°).
+- The inspector has matching **Rotation (°)** and **Crop left/right/top/bottom (%)** fields; all of them can be keyframed.
+- Each drag is one undo step. If Position, Scale, Rotation or a Crop edge has keyframes, a drag adds or updates a keyframe at the playhead instead of changing the whole clip.
+- Rendering order per clip: crop the source → grade the cropped picture on its own layer → draw it rotated about the clip's position with its opacity. Clicking selects by the visible (cropped, rotated) picture, and snapping uses its rotated bounds.
 - The box is hidden while playing, while exporting, and for clips on locked or hidden tracks. A clip covered by another layer can still be moved with its corner handles, the arrow keys or the inspector.
 
 The box and the picture use the same geometry function as the compositor, so what you drag is exactly what's drawn and exported. Verified in Chromium with full-frame bars on V1 and footage at 50 % on V2: clicking selected the right layer each time; a drag ending just inside the top-left edges snapped flush (X/Y 25 %), the same drag with Alt stayed at 25.8 %/25.5 %, and a drag near the middle snapped to 50 %/50 %; a corner drag scaled to 75.6 %; Undo reverted one gesture at a time; arrow-key nudges moved by 0.5 % and 5 %; and a drag at frame 60 with Position keyed at frame 0 added keys at 60 with frame 30 exactly halfway. The box disappeared during playback and returned on pause.
 
+Rotation and crop, verified in Chromium on a colour-bars clip at 50 % scale: Crop left 50 % left exactly the right half in place (x 0.50–0.75, blue → magenta → cyan); dragging the knob a quarter turn snapped to 90° and the picture measured x 0.359–0.641, y 0.50–0.944 — the cropped half turned about the clip's position, blue at the top; a 720p export's first frame measured the same box and colours. Grading the rotated clip turned exactly that area grey (chroma 0). In crop mode, dragging the (now right-hand) top edge 40 px set Crop top 22.2 % and moved the right edge to 0.578 as predicted; Undo removed it in one step. A rotation keyed 90° → 0° read 45° halfway, and rotation and crop survived a reload.
+
 ## Keyframes in Sequence Studio
 
-Select a clip and use the keyframe row under **Position X**, **Position Y**, **Scale**, **Opacity** or **Volume** in the inspector:
+Select a clip and use the keyframe row under **Position X**, **Position Y**, **Scale**, **Rotation**, the four **Crop** edges, **Opacity** or **Volume** in the inspector:
 
 - **◆** adds a keyframe at the playhead with the current value (lit when the playhead sits on one; click again to remove it). Once a property has keyframes its field is outlined and shows the animated value at the playhead; typing a new value adds or updates the keyframe there.
 - **◀ / ▶** jump the playhead to the previous/next keyframe of that property. **✕** stops animating it and keeps the value at the playhead.
