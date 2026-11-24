@@ -892,3 +892,80 @@
   padding-top: 8px;
   border-top: 1px solid var(--sq-line);
 }
+/* Auto-captions */
+.seq-autocap {
+  margin: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in oklab, var(--sq-accent) 35%, var(--sq-line));
+  border-radius: 8px;
+  background: rgba(183, 242, 106, 0.04);
+}
+.seq-autocap header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.seq-autocap h2 {
+  font-size: 13px;
+  margin: 0;
+}
+.sequence-studio .seq-autocap header button {
+  margin-left: auto;
+  padding: 2px 8px;
+}
+.seq-badge {
+  font-size: 10px;
+  color: var(--sq-accent);
+  border: 1px solid color-mix(in oklab, var(--sq-accent) 40%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.seq-autocap-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0 10px;
+  margin: 6px 0 !important;
+  border: 0;
+  padding: 0;
+}
+@media (max-width: 900px) {
+  .seq-autocap-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.seq-autocap-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--sq-muted);
+  grid-column: span 2;
+}
+.sequence-studio .seq-primary {
+  color: #0b0d12;
+  background: var(--sq-accent);
+  border-color: var(--sq-accent);
+  font-weight: 600;
+}
+.seq-autocap .seq-actions {
+  align-items: center;
+  gap: 10px;
+}
+.seq-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: #222631;
+  overflow: hidden;
+  margin: 8px 0 4px;
+}
+.seq-progress i {
+  display: block;
+  height: 100%;
+  background: var(--sq-accent);
+  transition: width 0.2s;
+}
+.sequence-studio .seq-apply-captions {
+  width: 100%;
+  margin: 4px 0 6px;
+  font-size: 11px;
+}

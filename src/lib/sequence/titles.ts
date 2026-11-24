@@ -55,6 +55,14 @@ export interface Title {
   /** Entrance at the clip's start / exit at its end (absent = none). */
   animIn?: TitleAnim | undefined;
   animOut?: TitleAnim | undefined;
+  /** Made by auto-captions (so a rerun can replace them and their style can be shared). */
+  caption?: boolean | undefined;
+  /**
+   * When each word is spoken, in seconds from the clip's start (one per word of `text`). A
+   * "Word by word" entrance then follows the speech instead of a fixed duration. Dropped when
+   * the text no longer has the same number of words.
+   */
+  wordTimes?: number[] | undefined;
 }
 export const MAX_TEXT = 500;
 export const LIMITS = {
@@ -188,7 +196,19 @@ export function readTitle(value: unknown): Title | null {
     backgroundOpacity: num("backgroundOpacity", DEFAULT_TITLE.backgroundOpacity),
     ...anim("animIn", v["animIn"]),
     ...anim("animOut", v["animOut"]),
+    ...(v["caption"] === true ? { caption: true } : {}),
+    ...wordTimesOf(v["wordTimes"], v["text"].slice(0, MAX_TEXT)),
   };
+}
+function wordTimesOf(value: unknown, text: string): Partial<Title> {
+  if (!Array.isArray(value) || !value.length || value.length > MAX_TEXT) return {};
+  if (value.length !== (text.match(/\S+/g)?.length ?? 0)) return {};
+  if (!value.every((x) => typeof x === "number" && Number.isFinite(x) && Math.abs(x) < 3600))
+    return {};
+  // Keep them in speaking order.
+  const times = value.map((x: number) => Math.round(x * 1000) / 1000);
+  for (let i = 1; i < times.length; i++) times[i] = Math.max(times[i]!, times[i - 1]!);
+  return { wordTimes: times };
 }
 function anim(key: "animIn" | "animOut", value: unknown): Partial<Title> {
   if (!value || typeof value !== "object") return {};
@@ -244,19 +264,31 @@ function motion(t: Title, a: TitleAnim, p: number): AnimState {
   }
 }
 
+/** Seconds a word takes to fade up when its reveal follows the speech. */
+export const SPOKEN_FADE = 0.12;
+/** Word-by-word reveal following `wordTimes`: words appear as they are spoken. */
+function spoken(times: number[], seconds: number): Reveal {
+  let k = -1;
+  while (k + 1 < times.length && times[k + 1]! <= seconds) k++;
+  if (k < 0) return { mode: "words", progress: 0 };
+  return { mode: "words", progress: k + Math.min(1, (seconds - times[k]!) / SPOKEN_FADE) };
+}
+
 /**
  * The title's animation state `offset` frames into a clip `frames` long. Entrance and exit
  * share the clip when they'd overlap (each is shortened in proportion).
  */
 export function titleAnimAt(t: Title, offset: number, frames: number, fps: number): AnimState {
-  let dIn = t.animIn ? t.animIn.duration * fps : 0,
+  // A word-by-word entrance with spoken word times follows the speech, not a duration.
+  const synced = t.animIn?.type === "words" && !!t.wordTimes?.length;
+  let dIn = t.animIn && !synced ? t.animIn.duration * fps : 0,
     dOut = t.animOut ? t.animOut.duration * fps : 0;
   if (dIn + dOut > frames && dIn + dOut > 0) {
     const k = frames / (dIn + dOut);
     dIn *= k;
     dOut *= k;
   }
-  const pIn = t.animIn && dIn > 0 ? Math.min(1, Math.max(0, offset / dIn)) : 1;
+  const pIn = !synced && t.animIn && dIn > 0 ? Math.min(1, Math.max(0, offset / dIn)) : 1;
   const pOut = t.animOut && dOut > 0 ? Math.min(1, Math.max(0, (frames - 1 - offset) / dOut)) : 1;
   const a = pIn < 1 ? motion(t, t.animIn!, pIn) : IDLE;
   const b = pOut < 1 ? motion(t, t.animOut!, pOut) : IDLE;
@@ -265,8 +297,15 @@ export function titleAnimAt(t: Title, offset: number, frames: number, fps: numbe
     dx: a.dx + b.dx,
     dy: a.dy + b.dy,
     scale: a.scale * b.scale,
-    reveal: a.reveal ?? b.reveal,
+    reveal: synced
+      ? (b.reveal ?? spokenUntilDone(t.wordTimes!, offset / fps))
+      : (a.reveal ?? b.reveal),
   };
+}
+/** Spoken reveal, or nothing (full text) once every word is up. */
+function spokenUntilDone(times: number[], seconds: number): Reveal | undefined {
+  const r = spoken(times, seconds);
+  return r.progress >= times.length ? undefined : r;
 }
 
 // ---------- measuring and drawing ----------

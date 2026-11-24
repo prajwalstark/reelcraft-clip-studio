@@ -19,11 +19,14 @@ export function TitleControls({
   onChange,
   onPreset,
   textRef,
+  onApplyToCaptions,
 }: {
   title: Title;
   onChange: (patch: Partial<Title>, key: string) => void;
   onPreset: (preset: (typeof PRESETS)[number]) => void;
   textRef?: Ref<HTMLTextAreaElement> | undefined;
+  /** For auto-captions: give every caption this look, position and animation. */
+  onApplyToCaptions?: (() => void) | undefined;
 }) {
   const id = useId();
   const slider = (
@@ -69,6 +72,11 @@ export function TitleControls({
           onChange={(e) => onChange({ text: e.target.value }, "text")}
         />
       </label>
+      {title.caption && onApplyToCaptions && (
+        <button type="button" className="seq-apply-captions" onClick={onApplyToCaptions}>
+          Apply this style to all captions
+        </button>
+      )}
       <div className="seq-actions seq-title-presets" role="group" aria-label="Title presets">
         {PRESETS.map((p) => (
           <button key={p.id} type="button" onClick={() => onPreset(p)}>
