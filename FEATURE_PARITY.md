@@ -141,6 +141,17 @@ Verified in Chromium over a colour-bars clip: ＋ Title put a title on V3 at the
 
 Animations, verified in Chromium on "Hello big world" over colour bars: with a 1 s Typewriter in, the first frame showed nothing, 0.5 s showed the left half (same left edge, x 0.306, as the finished line) and 1 s the full line; Word by word showed "Hello" then "Hello big" in place. Rise 0.2 s in sat 0.032 of the frame lower (predicted 0.031), Pop measured 0.344 of the frame wide (predicted 0.345, 88 % of 0.391) and Slide sat 0.044 to the left (predicted 0.043); all settled at the same place. A 0.5 s Fade out was partly transparent a quarter-second before the end and gone on the last frame. A 720p export's half-typed frame matched the preview within 2.79/255 with the same text extent.
 
+## Auto-captions in Sequence Studio
+
+**Auto-captions** in the timeline toolbar transcribes the sequence on this device (the same Whisper models as the Shorts editor, downloaded once, then offline) and adds each caption as a **title clip**:
+
+- **What it hears:** the sequence's own audio mix, so muted tracks are skipped and volumes, volume keyframes, fades and crossfades are respected; times are timeline times. Every clip with sound in the range must be linked.
+- **Choices:** range (whole sequence or under the selected clip), track (V3/V2/V1), model (Fast/Accurate), language, caption length (Punchy, Standard, Sentences), look (Subtitle, Boxed, Bold centre) and reveal — **Word by word, as spoken** (each word appears when it's said, from Whisper's word timings) or **Whole caption** (a quick fade).
+- **Result:** one title clip per caption on the chosen track, never overlapping the next, lines wrapped to fit the frame (portrait included). They're ordinary titles: edit the words, move, retime, restyle or delete them. All captions arrive as one undo step. Running it again replaces the earlier auto-captions on that track in the range (untick to keep them); other titles are never touched. A caption's **Apply this style to all captions** gives every auto-caption its look, position and animations while keeping each caption's words and timings. Editing a caption's text keeps the spoken timing while the word count is unchanged; otherwise its word-by-word reveal falls back to a timed one.
+- **Limits:** one transcription at a time across both editors (the other panel says it's busy); the 200-clip limit applies, and if captions wouldn't fit the panel says how many would and suggests longer captions or a shorter range.
+
+Verified in Chromium with the real Fast model on a 31-second spoken clip on V1: it added 12 captions on V3 in 14 s ("Welcome to RealForge." / "Today we are turning one long" / …), each with one spoken time per word; at 5.0 s the monitor showed "Today we are" — the caption that starts at 4.37 s revealing its words as they're said. Undo removed all 12 in one step and Redo restored them; running it again (8 s with the model loaded) replaced them, leaving 12; and Apply this style to all captions turned every caption amber. Unit tests cover cue→clip conversion (frames, no overlaps, range clipping), replacing, the clip limit, locked/audio tracks, wrapping for portrait frames, spoken-reveal timing and save/load.
+
 ## Moving clips in the program monitor
 
 In Sequence Studio you can position clips on the program monitor itself:

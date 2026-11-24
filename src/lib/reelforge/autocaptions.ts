@@ -69,8 +69,11 @@ export interface AutoCaptionOptions {
 
 export type JobStatus =
   "idle" | "loading" | "decoding" | "transcribing" | "done" | "error" | "canceled";
+/** Which editor started the job (one transcription runs at a time across the app). */
+export type JobOwner = "shorts" | "sequence";
 export interface AutoCaptionJob {
   status: JobStatus;
+  owner?: JobOwner | undefined;
   /** 0..1 progress of the current stage. */
   progress: number;
   detail: string;
@@ -86,12 +89,24 @@ const set = (p: Partial<AutoCaptionJob>) => {
   subs.forEach((f) => f());
 };
 export const getAutoCaptionJob = () => job;
-export function useAutoCaptions() {
-  return useSyncExternalStore(
+const IDLE_JOB: AutoCaptionJob = { status: "idle", progress: 0, detail: "" };
+/**
+ * The current job as `owner` should see it: its own job as is; another editor's job only as
+ * "busy elsewhere" while it runs (so one panel never reports the other's results).
+ */
+export function viewFor(j: AutoCaptionJob, owner: JobOwner | undefined): AutoCaptionJob {
+  if (!owner || !j.owner || j.owner === owner) return j;
+  return isBusy(j)
+    ? { ...j, detail: "Transcribing in the other editor — wait for it or cancel it there." }
+    : IDLE_JOB;
+}
+export function useAutoCaptions(owner?: JobOwner) {
+  const j = useSyncExternalStore(
     (f) => (subs.add(f), () => subs.delete(f)),
     () => job,
     () => job,
   );
+  return viewFor(j, owner);
 }
 export const isBusy = (j: AutoCaptionJob = job) =>
   j.status === "loading" || j.status === "decoding" || j.status === "transcribing";
@@ -245,80 +260,28 @@ export function explainError(message: string): string {
 const fmtSecs = (s: number) =>
   s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
 
-export async function runAutoCaptions(opts: AutoCaptionOptions) {
+/**
+ * Run one transcription job for `owner`: tracks status, honours Cancel, explains errors and
+ * resets the worker after a failure. `work` returns what was added.
+ */
+export async function runJob(
+  owner: JobOwner,
+  work: (signal: AbortSignal) => Promise<{ added: number; detail: string }>,
+) {
   if (isBusy()) return;
-  const file = getState().rt.file;
-  if (!file) {
-    set({ status: "error", error: "Relink the source video first.", detail: "" });
-    return;
-  }
-  const start = Math.max(0, opts.start);
-  const end = Math.min(getState().project.source?.duration ?? opts.end, opts.end);
-  if (!(end - start >= 0.5)) {
-    set({ status: "error", error: "Select a range at least half a second long.", detail: "" });
-    return;
-  }
-  if (end - start > MAX_TRANSCRIBE_SECONDS) {
-    set({
-      status: "error",
-      error: "Transcribe at most 60 minutes at a time — pick a clip instead of the whole video.",
-      detail: "",
-    });
-    return;
-  }
   abort = new AbortController();
   const signal = abort.signal;
-  set({ status: "loading", progress: 0, detail: "Starting…", error: undefined, added: undefined });
+  set({
+    owner,
+    status: "loading",
+    progress: 0,
+    detail: "Starting…",
+    error: undefined,
+    added: undefined,
+  });
   try {
-    const w = await ensureModel(MODELS[opts.model].id, MODELS[opts.model].bytes, signal);
-    set({ status: "decoding", progress: 0, detail: "Reading audio…", device: workerDevice });
-    const samples = await decodeRange(file, start, end, signal, (p) =>
-      set({ progress: p, detail: `Reading audio · ${Math.round(p * 100)}%` }),
-    );
-    const windows = planWindows(samples);
-    const words: Word[] = [];
-    const began = performance.now();
-    for (let i = 0; i < windows.length; i++) {
-      if (signal.aborted) canceled();
-      const win = windows[i]!;
-      const audio = samples.slice(win.start, win.end);
-      const seconds = audio.length / ASR_RATE;
-      const done = i / windows.length;
-      const elapsed = (performance.now() - began) / 1000;
-      const eta = i ? (elapsed / i) * (windows.length - i) : 0;
-      set({
-        status: "transcribing",
-        progress: done,
-        detail: `Transcribing ${i + 1} of ${windows.length}${eta ? ` · about ${fmtSecs(eta)} left` : ""}`,
-      });
-      if (isSilent(audio)) continue;
-      const res = await call(
-        w,
-        { type: "transcribe", id: i, audio, language: opts.language || null },
-        "result",
-        signal,
-      );
-      words.push(...chunksToWords(res.chunks, start + win.start / ASR_RATE, seconds));
-    }
-    const cues = wordsToCaptions(words, CUE_PRESETS[opts.preset], end);
-    if (getState().rt.file !== file)
-      throw new Error("The source video changed while transcribing; nothing was added.");
-    if (!cues.length) {
-      set({
-        status: "done",
-        progress: 1,
-        added: 0,
-        detail: "No speech was detected in this range.",
-      });
-      return;
-    }
-    commit((p) => ({ ...p, captions: mergeCaptions(p.captions, cues, start, end, opts.replace) }));
-    set({
-      status: "done",
-      progress: 1,
-      added: cues.length,
-      detail: `Added ${cues.length} captions.`,
-    });
+    const r = await work(signal);
+    set({ status: "done", progress: 1, added: r.added, detail: r.detail });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       set({ status: "canceled", progress: 0, detail: "Canceled. Nothing was changed." });
@@ -333,6 +296,83 @@ export async function runAutoCaptions(opts: AutoCaptionOptions) {
   } finally {
     abort = null;
   }
+}
+
+/** Report a problem found before any work starts (no worker, no download). */
+export function failJob(owner: JobOwner, error: string) {
+  if (!isBusy()) set({ owner, status: "error", progress: 0, detail: "", error });
+}
+
+/**
+ * Transcribe 16 kHz mono `samples` into timed words, `offset` seconds added to every time.
+ * Loads the model (with download progress), splits at quiet points, skips silent windows.
+ */
+export async function transcribeSamples(
+  samples: Float32Array,
+  offset: number,
+  opts: { model: ModelKey; language: string },
+  signal: AbortSignal,
+): Promise<Word[]> {
+  const w = await ensureModel(MODELS[opts.model].id, MODELS[opts.model].bytes, signal);
+  set({ device: workerDevice });
+  const windows = planWindows(samples);
+  const words: Word[] = [];
+  const began = performance.now();
+  for (let i = 0; i < windows.length; i++) {
+    if (signal.aborted) canceled();
+    const win = windows[i]!;
+    const audio = samples.slice(win.start, win.end);
+    const seconds = audio.length / ASR_RATE;
+    const done = i / windows.length;
+    const elapsed = (performance.now() - began) / 1000;
+    const eta = i ? (elapsed / i) * (windows.length - i) : 0;
+    set({
+      status: "transcribing",
+      progress: done,
+      detail: `Transcribing ${i + 1} of ${windows.length}${eta ? ` · about ${fmtSecs(eta)} left` : ""}`,
+    });
+    if (isSilent(audio)) continue;
+    const res = await call(
+      w,
+      { type: "transcribe", id: i, audio, language: opts.language || null },
+      "result",
+      signal,
+    );
+    words.push(...chunksToWords(res.chunks, offset + win.start / ASR_RATE, seconds));
+  }
+  return words;
+}
+
+/** Report audio-reading progress for the current job. */
+export const reportReading = (p: number) =>
+  set({ status: "decoding", progress: p, detail: `Reading audio · ${Math.round(p * 100)}%` });
+
+export async function runAutoCaptions(opts: AutoCaptionOptions) {
+  if (isBusy()) return;
+  const file = getState().rt.file;
+  if (!file) return failJob("shorts", "Relink the source video first.");
+  const start = Math.max(0, opts.start);
+  const end = Math.min(getState().project.source?.duration ?? opts.end, opts.end);
+  if (!(end - start >= 0.5))
+    return failJob("shorts", "Select a range at least half a second long.");
+  if (end - start > MAX_TRANSCRIBE_SECONDS)
+    return failJob(
+      "shorts",
+      "Transcribe at most 60 minutes at a time — pick a clip instead of the whole video.",
+    );
+  await runJob("shorts", async (signal) => {
+    // Load the model first so download progress shows before the (quick) audio read.
+    await ensureModel(MODELS[opts.model].id, MODELS[opts.model].bytes, signal);
+    reportReading(0);
+    const samples = await decodeRange(file, start, end, signal, reportReading);
+    const words = await transcribeSamples(samples, start, opts, signal);
+    const cues = wordsToCaptions(words, CUE_PRESETS[opts.preset], end);
+    if (getState().rt.file !== file)
+      throw new Error("The source video changed while transcribing; nothing was added.");
+    if (!cues.length) return { added: 0, detail: "No speech was detected in this range." };
+    commit((p) => ({ ...p, captions: mergeCaptions(p.captions, cues, start, end, opts.replace) }));
+    return { added: cues.length, detail: `Added ${cues.length} captions.` };
+  });
 }
 
 export function cancelAutoCaptions() {

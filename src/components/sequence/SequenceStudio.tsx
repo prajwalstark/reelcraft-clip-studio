@@ -58,6 +58,8 @@ import {
 } from "@/lib/sequence/keyframes";
 import { SequencePreview } from "./SequencePreview";
 import { TitleControls } from "./TitleControls";
+import { AutoCaptionPanel } from "./AutoCaptionPanel";
+import { readTitle } from "@/lib/sequence/titles";
 import "./sequence.css";
 const STORAGE = "reelcraft-sequence-v1";
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -435,6 +437,29 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
     if (clip) commit((s) => patchItem(s, clip.id, p));
   };
   const titleText = useRef<HTMLTextAreaElement>(null);
+  const [autocap, setAutocap] = useState(false);
+  /** Give every auto-caption the look, placement and animation of caption `from`. */
+  const restyleCaptions = (from: Item) =>
+    commit((s) => {
+      let n = 0;
+      const next = {
+        ...s,
+        items: s.items.map((c) => {
+          if (!c.title?.caption || c.id === from.id || trackOf(s, c.track).locked) return c;
+          const title = readTitle({
+            ...from.title,
+            text: c.title.text,
+            wordTimes: c.title.wordTimes,
+            caption: true,
+          });
+          if (!title) return c;
+          n++;
+          return { ...c, title, x: from.x, y: from.y, scale: from.scale };
+        }),
+      };
+      toast.success(n ? `Restyled ${n} other captions.` : "No other captions to restyle.");
+      return n ? next : s;
+    });
   /** Add a title at the playhead, select it and put the cursor in its text. */
   const newTitle = () => {
     let added = "";
@@ -966,6 +991,7 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
                 <TitleControls
                   title={clip.title}
                   textRef={titleText}
+                  onApplyToCaptions={() => restyleCaptions(clip)}
                   onChange={(t, key) =>
                     commit((s) => {
                       const c = s.items.find((x) => x.id === clip.id);
@@ -1212,6 +1238,16 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
         </aside>
       </fieldset>
       <section className="seq-timeline">
+        {autocap && (
+          <AutoCaptionPanel
+            sequence={sequence}
+            files={files}
+            clip={clip}
+            getSequence={() => seqRef.current}
+            apply={(edit) => commit(edit)}
+            onClose={() => setAutocap(false)}
+          />
+        )}
         <div className="seq-timeline-toolbar">
           <div className="seq-actions">
             <button
@@ -1238,6 +1274,14 @@ export default function SequenceStudio({ active = true }: { active?: boolean }) 
             </button>
             <button disabled={!!busy} onClick={newTitle}>
               ＋ Title
+            </button>
+            <button
+              disabled={!!busy}
+              aria-pressed={autocap}
+              aria-expanded={autocap}
+              onClick={() => setAutocap((v) => !v)}
+            >
+              Auto-captions
             </button>
             <button
               disabled={!!busy || !clip}

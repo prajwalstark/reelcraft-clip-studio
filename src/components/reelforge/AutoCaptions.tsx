@@ -55,7 +55,7 @@ function usePref<T extends string>(key: string, fallback: T, allowed: readonly s
 }
 
 export function AutoCaptions({ clip }: { clip: Clip }) {
-  const job = useAutoCaptions();
+  const job = useAutoCaptions("shorts");
   const duration = useStore((s) => s.project.source?.duration ?? 0);
   const captions = useStore((s) => s.project.captions);
   const [scope, setScope] = usePref<"clip" | "source">("scope", "clip", ["clip", "source"]);
